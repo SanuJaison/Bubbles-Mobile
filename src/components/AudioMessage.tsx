@@ -50,6 +50,10 @@ export const AudioMessage = ({ file, isMine }: AudioMessageProps) => {
   return (
     <Pressable
       onPress={togglePlayback}
+      accessibilityRole="button"
+      accessibilityLabel={
+        status.playing ? "Pause voice message" : "Play voice message"
+      }
       style={[
         styles.row,
         {

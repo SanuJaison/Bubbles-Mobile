@@ -644,6 +644,7 @@ export default function ChatScreen() {
     if (!selectedMessage) return;
     setEditingMessage(selectedMessage);
     setText(selectedMessage.text);
+    setPickedFiles([]);
     setReplyTo(null);
     setMessageMenuOpen(false);
   };
