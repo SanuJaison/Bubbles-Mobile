@@ -794,6 +794,8 @@ export default function ChatScreen() {
     if (
       selectedMessage.text &&
       !selectedMessage.isDeleted &&
+      !selectedMessage.pending &&
+      !selectedMessage.failed &&
       userIdOf(selectedMessage.sender) === currentUserId
     ) {
       options.push({
@@ -803,9 +805,12 @@ export default function ChatScreen() {
       });
     }
 
+    const isLocalMessage = selectedMessage._id.startsWith("local-");
+
     options.push({
-      label:
-        userIdOf(selectedMessage.sender) === currentUserId
+      label: isLocalMessage
+        ? "Remove message"
+        : userIdOf(selectedMessage.sender) === currentUserId
           ? "Delete for everyone"
           : "Delete for me",
       icon: "trash-outline",
@@ -880,7 +885,7 @@ export default function ChatScreen() {
           isMine={isMine}
           showSender={Boolean(activeConversation?.isGroup) && !isMine}
           onLongPress={() => {
-            if (item.isDeleted) return;
+            if (item.isDeleted || item.messageType === "system") return;
             setSelectedMessage(item);
             setMessageMenuOpen(true);
           }}
