@@ -1,0 +1,59 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "android-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build APK with EAS
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: npx eas-cli@latest build --platform android --profile production --non-interactive --json > eas-build.json
+
+      - name: Read APK URL
+        id: apk
+        run: |
+          node -e "const fs=require('fs');const data=JSON.parse(fs.readFileSync('eas-build.json','utf8'));const build=Array.isArray(data)?data[0]:data;if(!build?.artifacts?.buildUrl){throw new Error('EAS did not return an APK URL');}fs.writeFileSync('apk-url.txt',build.artifacts.buildUrl);"
+          echo "url=$(cat apk-url.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Download APK
+        run: curl -L "${{ steps.apk.outputs.url }}" -o Bubbles.apk
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="android-$(date +%Y%m%d-%H%M)-${GITHUB_RUN_NUMBER}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" Bubbles.apk --clobber
+          else
+            gh release create "$TAG" Bubbles.apk \
+              --title "Bubbles Android $TAG" \
+              --notes "Bubbles for Android. Install the APK on your phone. Calls are coming soon on Android."
+          fi
