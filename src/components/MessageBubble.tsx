@@ -3,7 +3,7 @@ import { Image } from "expo-image";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "../theme";
 import type { Message } from "../types";
-import { userNameOf } from "../utils/chat";
+import { userIdOf, userNameOf } from "../utils/chat";
 import { formatClockTime, formatDuration, formatFileSize } from "../utils/format";
 import { openExternalUrl } from "../utils/links";
 import { AudioMessage } from "./AudioMessage";
@@ -12,15 +12,21 @@ import { LinkifiedText } from "./LinkifiedText";
 type MessageBubbleProps = {
   message: Message;
   isMine: boolean;
+  currentUserId?: string;
   showSender?: boolean;
   onLongPress?: () => void;
+  onOpenMenu?: () => void;
+  onToggleReaction?: (emoji: string) => void;
 };
 
 export const MessageBubble = ({
   message,
   isMine,
+  currentUserId = "",
   showSender = false,
   onLongPress,
+  onOpenMenu,
+  onToggleReaction,
 }: MessageBubbleProps) => {
   const { colors } = useTheme();
 
@@ -85,6 +91,49 @@ export const MessageBubble = ({
     ? "This message was deleted"
     : message.replyTo?.text || "";
 
+  // Group the raw reactions by emoji so each chip reads "👍 2" instead of
+  // repeating the same emoji once per person.
+  const reactionSummary = (message.reactions || []).reduce<
+    { emoji: string; count: number; mine: boolean }[]
+  >((groups, reaction) => {
+    const emoji = String(reaction.emoji || "").trim();
+    if (!emoji) return groups;
+
+    const existing = groups.find((group) => group.emoji === emoji);
+    const mine = userIdOf(reaction.user) === currentUserId;
+
+    if (existing) {
+      existing.count += 1;
+      existing.mine = existing.mine || mine;
+      return groups;
+    }
+
+    groups.push({ emoji, count: 1, mine });
+    return groups;
+  }, []);
+
+  const actionButton = onOpenMenu ? (
+    <Pressable
+      onPress={onOpenMenu}
+      hitSlop={6}
+      accessibilityLabel="Message actions"
+      style={({ pressed }) => [
+        styles.actionButton,
+        {
+          backgroundColor: colors.surfaceAlt,
+          borderColor: colors.border,
+          opacity: pressed ? 0.6 : 0.95,
+        },
+      ]}
+    >
+      <Ionicons
+        name="ellipsis-horizontal"
+        size={15}
+        color={colors.textMuted}
+      />
+    </Pressable>
+  ) : null;
+
   return (
     <View
       style={[
@@ -98,7 +147,15 @@ export const MessageBubble = ({
         </Text>
       ) : null}
 
-      <Pressable
+      <View
+        style={[
+          styles.bubbleLine,
+          isMine ? styles.bubbleLineMine : styles.bubbleLineTheirs,
+        ]}
+      >
+        {isMine ? actionButton : null}
+
+        <Pressable
         onLongPress={onLongPress}
         delayLongPress={350}
         style={({ pressed }) => [
@@ -297,7 +354,45 @@ export const MessageBubble = ({
             )
           ) : null}
         </View>
-      </Pressable>
+        </Pressable>
+
+        {!isMine ? actionButton : null}
+      </View>
+
+      {!isDeleted && reactionSummary.length > 0 ? (
+        <View
+          style={[
+            styles.reactionRow,
+            isMine ? styles.reactionRowMine : styles.reactionRowTheirs,
+          ]}
+        >
+          {reactionSummary.map((group) => (
+            <Pressable
+              key={group.emoji}
+              onPress={() => onToggleReaction?.(group.emoji)}
+              style={({ pressed }) => [
+                styles.reactionChip,
+                {
+                  backgroundColor: group.mine
+                    ? colors.primarySoft
+                    : colors.surface,
+                  borderColor: group.mine ? colors.primary : colors.border,
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}
+            >
+              <Text style={styles.reactionEmoji}>{group.emoji}</Text>
+              {group.count > 1 ? (
+                <Text
+                  style={[styles.reactionCount, { color: colors.textMuted }]}
+                >
+                  {group.count}
+                </Text>
+              ) : null}
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -320,11 +415,63 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   bubble: {
-    maxWidth: "84%",
+    maxWidth: "100%",
     minWidth: 72,
+    flexShrink: 1,
     borderRadius: 18,
     paddingHorizontal: 12,
     paddingVertical: 9,
+  },
+  bubbleLine: {
+    maxWidth: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  bubbleLineMine: {
+    alignSelf: "flex-end",
+  },
+  bubbleLineTheirs: {
+    alignSelf: "flex-start",
+  },
+  actionButton: {
+    width: 27,
+    height: 27,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  reactionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 5,
+    marginTop: 4,
+    maxWidth: "86%",
+  },
+  reactionRowMine: {
+    alignSelf: "flex-end",
+    justifyContent: "flex-end",
+  },
+  reactionRowTheirs: {
+    alignSelf: "flex-start",
+  },
+  reactionChip: {
+    minHeight: 26,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  reactionEmoji: {
+    fontSize: 13,
+  },
+  reactionCount: {
+    fontSize: 10.5,
+    fontWeight: "700",
   },
   bubbleMine: {
     borderTopLeftRadius: 18,

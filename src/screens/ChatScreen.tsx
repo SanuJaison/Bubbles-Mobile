@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -28,14 +29,17 @@ import {
   markMessagesAsDeliveredAPI,
   markMessagesAsReadAPI,
   sendMessageAPI,
+  toggleMessageReactionAPI,
   type PickedFile,
 } from "../api/messages";
 import { ActionSheet, type ActionSheetOption } from "../components/ActionSheet";
 import { Avatar } from "../components/Avatar";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { EmojiPicker } from "../components/EmojiPicker";
 import { ForwardModal } from "../components/ForwardModal";
 import { InfoDialog } from "../components/InfoDialog";
 import { MessageBubble } from "../components/MessageBubble";
+import { ProfileSheet } from "../components/ProfileSheet";
 import { Screen } from "../components/Screen";
 import { CALLS_COMING_SOON } from "../config";
 import { useAuth } from "../context/AuthContext";
@@ -65,6 +69,8 @@ const isSameChat = (incoming: unknown, chatId: string) =>
 
 const localId = () =>
   `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const REACTION_CHOICES = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
 export default function ChatScreen() {
   const { colors } = useTheme();
@@ -112,6 +118,8 @@ export default function ChatScreen() {
   const [deleteChatConfirmOpen, setDeleteChatConfirmOpen] = useState(false);
   const [deletingChat, setDeletingChat] = useState(false);
   const [infoMessage, setInfoMessage] = useState("");
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const listRef = useRef<FlatList<Message>>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -323,6 +331,22 @@ export default function ChatScreen() {
       );
     };
 
+    const handleReaction = (payload: any) => {
+      if (!isSameChat(payload?.chatId, chatId)) return;
+      const messageId = String(payload?.messageId || "");
+      if (!messageId) return;
+
+      const reactions = Array.isArray(payload?.reactions)
+        ? payload.reactions
+        : [];
+
+      setMessages((previous) =>
+        previous.map((message) =>
+          message._id === messageId ? { ...message, reactions } : message
+        )
+      );
+    };
+
     const handleTyping = (payload: any) => {
       if (!isSameChat(payload?.chatId, chatId)) return;
       const name = String(payload?.userName || "").trim();
@@ -358,6 +382,7 @@ export default function ChatScreen() {
     socket.on("messageEdited", handleEdited);
     socket.on("messageDeleted", handleDeleted);
     socket.on("messageDeletedForUser", handleDeletedForUser);
+    socket.on("messageReaction", handleReaction);
     socket.on("userTyping", handleTyping);
     socket.on("userStoppedTyping", handleStoppedTyping);
     socket.on("typingUsers", handleTypingUsers);
@@ -371,6 +396,7 @@ export default function ChatScreen() {
       socket.off("messageEdited", handleEdited);
       socket.off("messageDeleted", handleDeleted);
       socket.off("messageDeletedForUser", handleDeletedForUser);
+      socket.off("messageReaction", handleReaction);
       socket.off("userTyping", handleTyping);
       socket.off("userStoppedTyping", handleStoppedTyping);
       socket.off("typingUsers", handleTypingUsers);
@@ -433,6 +459,47 @@ export default function ChatScreen() {
         typingActive.current = false;
       }
     }, 1500);
+  };
+
+  const handleEmojiSelect = (emoji: string) => {
+    setText((previous) => `${previous}${emoji}`);
+  };
+
+  const toggleEmojiPicker = () => {
+    const next = !emojiPickerOpen;
+
+    if (next) {
+      Keyboard.dismiss();
+    }
+
+    setEmojiPickerOpen(next);
+  };
+
+  const handleToggleReaction = async (message: Message, emoji: string) => {
+    if (!message || message._id.startsWith("local-")) return;
+
+    try {
+      const response = await toggleMessageReactionAPI(message._id, emoji);
+      const reactions = Array.isArray(response.data?.reactions)
+        ? response.data.reactions
+        : [];
+
+      setMessages((previous) =>
+        previous.map((item) =>
+          item._id === message._id ? { ...item, reactions } : item
+        )
+      );
+      setSelectedMessage((previous) =>
+        previous && previous._id === message._id
+          ? { ...previous, reactions }
+          : previous
+      );
+    } catch (error) {
+      showToast(
+        getErrorMessage(error, "Unable to update this reaction."),
+        "error"
+      );
+    }
   };
 
   const handlePickImages = async () => {
@@ -824,6 +891,11 @@ export default function ChatScreen() {
 
   const headerOptions: ActionSheetOption[] = [
     {
+      label: activeConversation?.isGroup ? "Group info" : "View profile",
+      icon: "person-circle-outline",
+      onPress: () => setProfileOpen(true),
+    },
+    {
       label: "Clear chat",
       icon: "sparkles-outline",
       onPress: () => setClearConfirmOpen(true),
@@ -842,6 +914,40 @@ export default function ChatScreen() {
       : typingNames.length === 1
         ? `${typingNames[0]} is typing...`
         : "Several people are typing...";
+
+  const reactionHeader = selectedMessage ? (
+    <View style={styles.reactionPicker}>
+      {REACTION_CHOICES.map((emoji) => {
+        const active = (selectedMessage.reactions || []).some(
+          (reaction) =>
+            userIdOf(reaction.user) === currentUserId &&
+            reaction.emoji === emoji
+        );
+
+        return (
+          <Pressable
+            key={emoji}
+            onPress={() => {
+              handleToggleReaction(selectedMessage, emoji);
+              setMessageMenuOpen(false);
+            }}
+            style={({ pressed }) => [
+              styles.reactionChoice,
+              {
+                backgroundColor: active
+                  ? colors.primarySoft
+                  : colors.surfaceAlt,
+                borderColor: active ? colors.primary : colors.border,
+                opacity: pressed ? 0.65 : 1,
+              },
+            ]}
+          >
+            <Text style={styles.reactionChoiceEmoji}>{emoji}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  ) : null;
 
   const subtitle = typingLabel
     ? typingLabel
@@ -884,12 +990,18 @@ export default function ChatScreen() {
         <MessageBubble
           message={item}
           isMine={isMine}
+          currentUserId={currentUserId}
           showSender={Boolean(activeConversation?.isGroup) && !isMine}
           onLongPress={() => {
             if (item.isDeleted || item.messageType === "system") return;
             setSelectedMessage(item);
             setMessageMenuOpen(true);
           }}
+          onOpenMenu={() => {
+            setSelectedMessage(item);
+            setMessageMenuOpen(true);
+          }}
+          onToggleReaction={(emoji) => handleToggleReaction(item, emoji)}
         />
       </View>
     );
@@ -916,7 +1028,7 @@ export default function ChatScreen() {
     <Screen>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <View
           style={[
@@ -938,32 +1050,43 @@ export default function ChatScreen() {
             <Ionicons name="arrow-back" size={23} color={colors.text} />
           </Pressable>
 
-          <Avatar
-            name={activeConversation?.title}
-            uri={activeConversation?.avatar}
-            size={40}
-            isGroup={activeConversation?.isGroup}
-            online={activeConversation?.online}
-            showOnline={!activeConversation?.isGroup}
-          />
+          <Pressable
+            onPress={() => setProfileOpen(true)}
+            accessibilityLabel={
+              activeConversation?.isGroup ? "Group info" : "View profile"
+            }
+            style={({ pressed }) => [
+              styles.headerIdentity,
+              { opacity: pressed ? 0.7 : 1 },
+            ]}
+          >
+            <Avatar
+              name={activeConversation?.title}
+              uri={activeConversation?.avatar}
+              size={40}
+              isGroup={activeConversation?.isGroup}
+              online={activeConversation?.online}
+              showOnline={!activeConversation?.isGroup}
+            />
 
-          <View style={styles.headerText}>
-            <Text
-              numberOfLines={1}
-              style={[styles.headerTitle, { color: colors.text }]}
-            >
-              {activeConversation?.title || "Chat"}
-            </Text>
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.headerSubtitle,
-                { color: typingLabel ? colors.primary : colors.textMuted },
-              ]}
-            >
-              {subtitle}
-            </Text>
-          </View>
+            <View style={styles.headerText}>
+              <Text
+                numberOfLines={1}
+                style={[styles.headerTitle, { color: colors.text }]}
+              >
+                {activeConversation?.title || "Chat"}
+              </Text>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.headerSubtitle,
+                  { color: typingLabel ? colors.primary : colors.textMuted },
+                ]}
+              >
+                {subtitle}
+              </Text>
+            </View>
+          </Pressable>
 
           <Pressable
             onPress={() => setInfoMessage(CALLS_COMING_SOON)}
@@ -1221,6 +1344,10 @@ export default function ChatScreen() {
             </View>
           ) : null}
 
+          {emojiPickerOpen ? (
+            <EmojiPicker onSelect={handleEmojiSelect} />
+          ) : null}
+
           <View style={styles.composerRow}>
             <Pressable
               onPress={() => setAttachMenuOpen(true)}
@@ -1239,6 +1366,7 @@ export default function ChatScreen() {
             <TextInput
               value={text}
               onChangeText={handleTextChange}
+              onFocus={() => setEmojiPickerOpen(false)}
               placeholder={
                 isRecording ? "Recording voice message..." : "Message..."
               }
@@ -1256,6 +1384,27 @@ export default function ChatScreen() {
                 },
               ]}
             />
+
+            <Pressable
+              onPress={toggleEmojiPicker}
+              disabled={isRecording}
+              accessibilityLabel="Emoji picker"
+              style={({ pressed }) => [
+                styles.roundButton,
+                {
+                  backgroundColor: emojiPickerOpen
+                    ? colors.primarySoft
+                    : colors.surfaceAlt,
+                  opacity: isRecording ? 0.4 : pressed ? 0.7 : 1,
+                },
+              ]}
+            >
+              <Ionicons
+                name="happy-outline"
+                size={23}
+                color={emojiPickerOpen ? colors.primary : colors.textMuted}
+              />
+            </Pressable>
 
             {isRecording ? (
               <Pressable
@@ -1318,6 +1467,7 @@ export default function ChatScreen() {
       <ActionSheet
         visible={messageMenuOpen}
         title="Message actions"
+        header={reactionHeader}
         options={messageOptions}
         onClose={() => setMessageMenuOpen(false)}
       />
@@ -1392,6 +1542,13 @@ export default function ChatScreen() {
         onConfirm={handleDeleteChat}
       />
 
+      <ProfileSheet
+        visible={profileOpen}
+        conversation={activeConversation}
+        currentUserId={currentUserId}
+        onClose={() => setProfileOpen(false)}
+      />
+
       <InfoDialog
         visible={Boolean(infoMessage)}
         title="Calls"
@@ -1425,6 +1582,29 @@ const styles = StyleSheet.create({
     height: 42,
     alignItems: "center",
     justifyContent: "center",
+  },
+  headerIdentity: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  reactionPicker: {
+    flexDirection: "row",
+    gap: 6,
+    paddingHorizontal: 4,
+  },
+  reactionChoice: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reactionChoiceEmoji: {
+    fontSize: 22,
   },
   headerText: {
     flex: 1,

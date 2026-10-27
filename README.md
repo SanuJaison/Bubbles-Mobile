@@ -9,7 +9,11 @@ The Android client for Bubbles, built with Expo SDK 58 and Expo Router. It talks
 - Forgot-password flow
 - Direct chats and groups
 - Text, photo, file, and voice messages
+- Emoji picker in the composer
 - Read receipts, typing indicators, replies, edits, forwarding, and deletion
+- Message actions from long press or the visible menu button
+- Emoji reactions on messages
+- Tap the chat header for a user or group profile panel
 - Bubbles AI with local history, plain-text replies, clickable links, read-aloud, reply, forward, and delete actions
 - Bubbles AI appears in the chat list after the first AI conversation
 - Dark, light, and system themes
@@ -80,4 +84,4 @@ The release contains `Bubbles.apk`. After the first release, set `VITE_ANDROID_D
 
 - Group administration (renaming, adding or removing members, admin permissions) is not implemented yet.
 - Android voice and video calls are intentionally disabled.
-- Registration email verification cannot send from a free Render web service because Render blocks outbound SMTP ports 25, 465, and 587. Use a paid Render instance to keep Gmail SMTP, or move email sending to an HTTPS API such as Gmail API, Brevo, or Resend before public registration.
+- Registration email verification cannot send from a free Render web service because Render blocks outbound SMTP ports 25, 465, and 587. The backend supports Brevo's HTTPS API through `BREVO_API_KEY` plus a verified `SMTP_FROM` sender, which works on the free Render tier. Gmail SMTP still works locally and on paid hosts.

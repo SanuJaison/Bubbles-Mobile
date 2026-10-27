@@ -80,11 +80,12 @@ export default function FeedbackScreen() {
     <Screen>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.header}>
@@ -120,13 +121,15 @@ export default function FeedbackScreen() {
             <View style={[styles.heroIcon, { backgroundColor: colors.surface }]}>
               <Ionicons name="chatbox-ellipses" size={24} color={colors.primary} />
             </View>
-            <Text style={[styles.heroTitle, { color: colors.text }]}>
-              Help shape Bubbles
-            </Text>
-            <Text style={[styles.heroCopy, { color: colors.textMuted }]}>
-              Every note is read by the team. Tell us what feels good and what
-              needs work.
-            </Text>
+            <View style={styles.heroText}>
+              <Text style={[styles.heroTitle, { color: colors.text }]}>
+                Help shape Bubbles
+              </Text>
+              <Text style={[styles.heroCopy, { color: colors.textMuted }]}>
+                Every note is read by the team. Tell us what feels good and what
+                needs work.
+              </Text>
+            </View>
           </View>
 
           <View style={styles.form}>
@@ -287,6 +290,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 13,
+  },
+  heroText: {
+    flex: 1,
+    minWidth: 0,
   },
   heroIcon: {
     width: 48,

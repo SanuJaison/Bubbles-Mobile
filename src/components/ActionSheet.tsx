@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import type { ReactNode } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../theme";
@@ -13,6 +14,7 @@ export type ActionSheetOption = {
 type ActionSheetProps = {
   visible: boolean;
   title?: string;
+  header?: ReactNode;
   options: ActionSheetOption[];
   onClose: () => void;
 };
@@ -20,6 +22,7 @@ type ActionSheetProps = {
 export const ActionSheet = ({
   visible,
   title,
+  header,
   options,
   onClose,
 }: ActionSheetProps) => {
@@ -54,6 +57,8 @@ export const ActionSheet = ({
               {title}
             </Text>
           ) : null}
+
+          {header ? <View style={styles.header}>{header}</View> : null}
 
           {options.map((option) => (
             <Pressable
@@ -132,6 +137,9 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.7,
     paddingHorizontal: 12,
+    paddingBottom: 8,
+  },
+  header: {
     paddingBottom: 8,
   },
   option: {

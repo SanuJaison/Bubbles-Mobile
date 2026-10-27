@@ -24,6 +24,12 @@ export type Attachment = {
   waveform?: number[];
 };
 
+export type MessageReaction = {
+  user: User | string;
+  emoji: string;
+  createdAt?: string;
+};
+
 export type ReplyPreview = {
   _id?: string;
   text?: string;
@@ -40,6 +46,7 @@ export type Message = {
   text: string;
   messageType: "text" | "image" | "file" | "audio" | "call" | "system";
   files?: Attachment[];
+  reactions?: MessageReaction[];
   replyTo?: ReplyPreview | null;
   isDelivered?: boolean;
   isRead?: boolean;

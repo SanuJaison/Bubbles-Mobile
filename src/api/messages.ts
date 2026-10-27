@@ -1,5 +1,5 @@
 import api from "./client";
-import type { Message } from "../types";
+import type { Message, MessageReaction } from "../types";
 
 export type PickedFile = {
   uri: string;
@@ -88,3 +88,9 @@ export const editMessageAPI = (messageId: string, text: string) =>
 
 export const forwardMessageAPI = (messageId: string, chatIds: string[]) =>
   api.post("/messages/forward", { messageId, chatIds });
+
+export const toggleMessageReactionAPI = (messageId: string, emoji: string) =>
+  api.patch<{ reactions: MessageReaction[] }>(
+    `/messages/${messageId}/reaction`,
+    { emoji }
+  );

@@ -15,7 +15,6 @@ import { createGroupAPI, createOrGetChatAPI } from "../api/chats";
 import { getAllUsersAPI } from "../api/auth";
 import { getErrorMessage } from "../api/client";
 import { Avatar } from "../components/Avatar";
-import { EmptyState } from "../components/EmptyState";
 import { GradientButton } from "../components/GradientButton";
 import { Screen } from "../components/Screen";
 import { TextField } from "../components/TextField";
@@ -80,10 +79,12 @@ export default function NewChatScreen() {
   const query = search.trim().toLowerCase();
 
   const filteredUsers = useMemo(() => {
-    if (!query) return users;
+    // Privacy: never reveal the full member list. People only appear after the
+    // user types a search, and only when their name or username matches.
+    if (!query) return [];
 
     return users.filter((item) => {
-      const haystack = [item.name, item.username, item.email]
+      const haystack = [item.name, item.username]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
@@ -431,11 +432,25 @@ export default function NewChatScreen() {
               </Text>
             </View>
           ) : (
-            <EmptyState
-              icon="people-outline"
-              title="No one else is here yet"
-              message="Invite a friend to Bubbles, then start a conversation."
-            />
+            <View style={styles.empty}>
+              <View
+                style={[styles.emptyIcon, { backgroundColor: colors.primarySoft }]}
+              >
+                <Ionicons
+                  name="search-outline"
+                  size={26}
+                  color={colors.primary}
+                />
+              </View>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>
+                {mode === "group" ? "Search for members" : "Search for someone"}
+              </Text>
+              <Text style={[styles.emptyCopy, { color: colors.textMuted }]}>
+                {mode === "group"
+                  ? "Type a name or username to find people for your group."
+                  : "Type a name or username above. People are only shown when you search."}
+              </Text>
+            </View>
           )
         }
       />
@@ -595,6 +610,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 32,
     paddingVertical: 60,
+  },
+  emptyIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
   },
   emptyTitle: {
     fontSize: 17,
