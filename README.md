@@ -80,3 +80,4 @@ The release contains `Bubbles.apk`. After the first release, set `VITE_ANDROID_D
 
 - Group administration (renaming, adding or removing members, admin permissions) is not implemented yet.
 - Android voice and video calls are intentionally disabled.
+- Registration email verification cannot send from a free Render web service because Render blocks outbound SMTP ports 25, 465, and 587. Use a paid Render instance to keep Gmail SMTP, or move email sending to an HTTPS API such as Gmail API, Brevo, or Resend before public registration.
