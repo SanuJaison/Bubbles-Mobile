@@ -997,10 +997,14 @@ export default function ChatScreen() {
             setSelectedMessage(item);
             setMessageMenuOpen(true);
           }}
-          onOpenMenu={() => {
-            setSelectedMessage(item);
-            setMessageMenuOpen(true);
-          }}
+          onOpenMenu={
+            item.isDeleted
+              ? undefined
+              : () => {
+                  setSelectedMessage(item);
+                  setMessageMenuOpen(true);
+                }
+          }
           onToggleReaction={(emoji) => handleToggleReaction(item, emoji)}
         />
       </View>
