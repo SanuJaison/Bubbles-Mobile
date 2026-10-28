@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "../context/AuthContext";
+import { ChatPrefsProvider } from "../context/ChatPrefsContext";
 import { ChatsProvider } from "../context/ChatsContext";
 import { SocketProvider } from "../context/SocketContext";
 import { ToastProvider } from "../context/ToastContext";
@@ -58,15 +59,17 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ThemeProvider>
         <AuthProvider>
-          <SocketProvider>
-            <ChatsProvider>
-              <ToastProvider>
-                <ThemedStatusBar />
-                <SplashController />
-                <RootNavigator />
-              </ToastProvider>
-            </ChatsProvider>
-          </SocketProvider>
+          <ChatPrefsProvider>
+            <SocketProvider>
+              <ChatsProvider>
+                <ToastProvider>
+                  <ThemedStatusBar />
+                  <SplashController />
+                  <RootNavigator />
+                </ToastProvider>
+              </ChatsProvider>
+            </SocketProvider>
+          </ChatPrefsProvider>
         </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>

@@ -47,6 +47,14 @@ export const updateProfileAPI = (payload: {
 
 export const getAllUsersAPI = () => api.get<{ users: User[] }>("/users/all");
 
+export const toggleBlockUserAPI = (userId: string) =>
+  api.patch<{ blocked: boolean; user: User }>(`/users/block/${userId}`);
+
+export const reportUserAPI = (
+  userId: string,
+  payload: { reason: string; details?: string; chatId?: string }
+) => api.post(`/users/report/${userId}`, payload);
+
 export const recordDeviceAPI = (deviceId: string) =>
   api.post("/users/device", { deviceId });
 

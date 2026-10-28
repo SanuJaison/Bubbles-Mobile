@@ -1,4 +1,5 @@
 import { Image } from "expo-image";
+import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "../theme";
 import type { Conversation } from "../types";
@@ -13,6 +14,9 @@ type ChatListItemProps = {
   onPress: () => void;
   onLongPress?: () => void;
   isAI?: boolean;
+  isPinned?: boolean;
+  isFavorite?: boolean;
+  isMuted?: boolean;
 };
 
 export const ChatListItem = ({
@@ -20,6 +24,9 @@ export const ChatListItem = ({
   onPress,
   onLongPress,
   isAI = false,
+  isPinned = false,
+  isFavorite = false,
+  isMuted = false,
 }: ChatListItemProps) => {
   const { colors } = useTheme();
   const hasUnread = conversation.unread > 0;
@@ -68,6 +75,23 @@ export const ChatListItem = ({
           >
             {conversation.title}
           </Text>
+
+          {isPinned ? (
+            <Ionicons name="pin" size={13} color={colors.primary} />
+          ) : null}
+
+          {isFavorite ? (
+            <Ionicons name="star" size={13} color={colors.accent} />
+          ) : null}
+
+          {isMuted ? (
+            <Ionicons
+              name="notifications-off-outline"
+              size={14}
+              color={colors.textSoft}
+            />
+          ) : null}
+
           <Text
             style={[
               styles.time,

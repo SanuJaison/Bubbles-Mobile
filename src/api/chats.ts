@@ -21,3 +21,17 @@ export const deleteChatAPI = (chatId: string) =>
 
 export const clearChatAPI = (chatId: string) =>
   api.delete(`/messages/chat/${chatId}`);
+
+export const addGroupMembersAPI = (chatId: string, participantIds: string[]) =>
+  api.post<{ chat: Chat }>(`/chats/${chatId}/members`, { participantIds });
+
+export const leaveGroupAPI = (chatId: string) =>
+  api.post(`/chats/${chatId}/leave`);
+
+export const deleteGroupAPI = (chatId: string) =>
+  api.delete(`/chats/${chatId}/group`);
+
+export const reportChatAPI = (
+  chatId: string,
+  payload: { reason: string; details?: string }
+) => api.post(`/chats/${chatId}/report`, payload);

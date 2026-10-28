@@ -2,12 +2,21 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "../theme";
-import type { Message } from "../types";
+import type { Attachment, Message } from "../types";
 import { userIdOf, userNameOf } from "../utils/chat";
 import { formatClockTime, formatDuration, formatFileSize } from "../utils/format";
 import { openExternalUrl } from "../utils/links";
 import { AudioMessage } from "./AudioMessage";
 import { LinkifiedText } from "./LinkifiedText";
+import { VideoMessage } from "./VideoMessage";
+
+const VIDEO_EXTENSION = /\.(mp4|mov|webm|mkv|3gp|m4v|avi|ogv)$/i;
+
+const isVideoAttachment = (file: Attachment) =>
+  Boolean(
+    file.mimeType?.startsWith("video/") ||
+      VIDEO_EXTENSION.test(file.name || "")
+  );
 
 type MessageBubbleProps = {
   message: Message;
@@ -78,10 +87,12 @@ export const MessageBubble = ({
   const audio = (message.files || []).filter((file) =>
     file.mimeType?.startsWith("audio/")
   );
+  const videos = (message.files || []).filter(isVideoAttachment);
   const documents = (message.files || []).filter(
     (file) =>
       !file.mimeType?.startsWith("image/") &&
-      !file.mimeType?.startsWith("audio/")
+      !file.mimeType?.startsWith("audio/") &&
+      !isVideoAttachment(file)
   );
 
   const replySender = message.replyTo
@@ -228,6 +239,18 @@ export const MessageBubble = ({
           <View style={styles.attachmentList}>
             {audio.map((file, index) => (
               <AudioMessage
+                key={`${file.url}-${index}`}
+                file={file}
+                isMine={isMine}
+              />
+            ))}
+          </View>
+        ) : null}
+
+        {videos.length > 0 ? (
+          <View style={styles.attachmentList}>
+            {videos.map((file, index) => (
+              <VideoMessage
                 key={`${file.url}-${index}`}
                 file={file}
                 isMine={isMine}
@@ -530,6 +553,8 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   fileRow: {
+    width: 224,
+    maxWidth: "100%",
     minHeight: 52,
     borderRadius: 11,
     paddingHorizontal: 11,

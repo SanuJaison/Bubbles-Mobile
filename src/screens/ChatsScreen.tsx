@@ -11,15 +11,17 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { deleteChatAPI } from "../api/chats";
+import { deleteChatAPI, deleteGroupAPI, clearChatAPI, leaveGroupAPI } from "../api/chats";
 import { getErrorMessage } from "../api/client";
-import { ActionSheet } from "../components/ActionSheet";
+import { ActionSheet, type ActionSheetOption } from "../components/ActionSheet";
+import { AddPeopleModal } from "../components/AddPeopleModal";
 import { BrandMark } from "../components/BrandMark";
 import { ChatListItem } from "../components/ChatListItem";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
 import { Screen } from "../components/Screen";
 import { useAuth } from "../context/AuthContext";
+import { useChatPrefs } from "../context/ChatPrefsContext";
 import { useChats } from "../context/ChatsContext";
 import { useToast } from "../context/ToastContext";
 import { useTheme } from "../theme";
@@ -55,6 +57,21 @@ export default function ChatsScreen() {
   const [chatMenuOpen, setChatMenuOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [groupConfirmOpen, setGroupConfirmOpen] = useState(false);
+  const [groupBusy, setGroupBusy] = useState(false);
+  const [groupAction, setGroupAction] = useState<"leave" | "delete">("delete");
+  const [addPeopleOpen, setAddPeopleOpen] = useState(false);
+
+  const {
+    isFavorite,
+    isPinned,
+    isMuted,
+    toggleFavorite,
+    togglePinned,
+    toggleMuted,
+  } = useChatPrefs();
 
   const currentUserId = userIdOf(user);
 
@@ -72,10 +89,19 @@ export default function ChatsScreen() {
 
   const query = search.trim().toLowerCase();
 
-  const filteredChats = useMemo(() => {
-    if (!query) return conversations;
+  const sortedChats = useMemo(() => {
+    // Pinned chats float to the top while keeping the server's recency order
+    // inside each group (Array.prototype.sort is stable in Hermes/V8).
+    return [...conversations].sort(
+      (first, second) =>
+        Number(isPinned(second.id)) - Number(isPinned(first.id))
+    );
+  }, [conversations, isPinned]);
 
-    return conversations.filter((conversation) => {
+  const filteredChats = useMemo(() => {
+    if (!query) return sortedChats;
+
+    return sortedChats.filter((conversation) => {
       const haystack = [
         conversation.title,
         conversation.lastMessage,
@@ -86,7 +112,7 @@ export default function ChatsScreen() {
 
       return haystack.includes(query);
     });
-  }, [conversations, query]);
+  }, [sortedChats, query]);
 
   const showAI =
     aiSummary.hasConversation &&
@@ -132,10 +158,166 @@ export default function ChatsScreen() {
     }
   };
 
+  const handleClearChat = async () => {
+    if (!selectedChat || clearing) return;
+
+    setClearing(true);
+    try {
+      await clearChatAPI(selectedChat.id);
+      setClearConfirmOpen(false);
+      setSelectedChat(null);
+      showToast("Chat cleared", "success");
+    } catch (clearError) {
+      showToast(
+        getErrorMessage(clearError, "Unable to clear this chat."),
+        "error"
+      );
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  const handleGroupAction = async () => {
+    if (!selectedChat || groupBusy) return;
+
+    setGroupBusy(true);
+    try {
+      if (groupAction === "leave") {
+        await leaveGroupAPI(selectedChat.id);
+      } else {
+        await deleteGroupAPI(selectedChat.id);
+      }
+
+      removeConversation(selectedChat.id);
+      setGroupConfirmOpen(false);
+      setSelectedChat(null);
+      showToast(
+        groupAction === "leave" ? "You left the group" : "Group deleted",
+        "success"
+      );
+    } catch (groupError) {
+      showToast(
+        getErrorMessage(
+          groupError,
+          groupAction === "leave"
+            ? "Unable to leave this group."
+            : "Unable to delete this group."
+        ),
+        "error"
+      );
+    } finally {
+      setGroupBusy(false);
+    }
+  };
+
   const refreshAll = () => {
     refreshChats();
     reloadAISummary();
   };
+
+  const selectedIsGroup = Boolean(selectedChat?.isGroup);
+  const selectedIsCreator = Boolean(
+    selectedIsGroup &&
+      selectedChat?.groupCreatedBy &&
+      String(selectedChat.groupCreatedBy) === currentUserId
+  );
+  const selectedIsPinned = isPinned(selectedChat?.id);
+  const selectedIsFavorite = isFavorite(selectedChat?.id);
+  const selectedIsMuted = isMuted(selectedChat?.id);
+
+  const chatMenuOptions: ActionSheetOption[] = selectedChat
+    ? [
+        ...(selectedIsGroup
+          ? []
+          : [
+              {
+                label: "Add to group",
+                icon: "person-add-outline" as const,
+                onPress: () => setAddPeopleOpen(true),
+              },
+            ]),
+        {
+          label: selectedIsPinned ? "Unpin chat" : "Pin chat to top",
+          icon: selectedIsPinned ? "pin-outline" : "pin",
+          onPress: () => {
+            togglePinned(selectedChat.id);
+            showToast(
+              selectedIsPinned ? "Chat unpinned" : "Chat pinned to top",
+              "success"
+            );
+          },
+        },
+        {
+          label: selectedIsFavorite
+            ? "Remove from favourites"
+            : "Add to favourites",
+          icon: selectedIsFavorite ? "star" : "star-outline",
+          onPress: () => {
+            toggleFavorite(selectedChat.id);
+            showToast(
+              selectedIsFavorite
+                ? "Removed from favourites"
+                : "Added to favourites",
+              "success"
+            );
+          },
+        },
+        {
+          label: selectedIsMuted
+            ? "Unmute notifications"
+            : "Mute notifications",
+          icon: selectedIsMuted
+            ? "notifications-outline"
+            : "notifications-off-outline",
+          onPress: () => {
+            toggleMuted(selectedChat.id);
+            showToast(
+              selectedIsMuted
+                ? "Notifications unmuted"
+                : "Notifications muted",
+              "success"
+            );
+          },
+        },
+        {
+          label: "Clear chat",
+          icon: "sparkles-outline",
+          onPress: () => setClearConfirmOpen(true),
+        },
+        ...(selectedIsGroup
+          ? selectedIsCreator
+            ? [
+                {
+                  label: "Delete group",
+                  icon: "trash-outline" as const,
+                  destructive: true,
+                  onPress: () => {
+                    setGroupAction("delete");
+                    setGroupConfirmOpen(true);
+                  },
+                },
+              ]
+            : [
+                {
+                  label: "Exit group",
+                  icon: "log-out-outline" as const,
+                  destructive: true,
+                  onPress: () => {
+                    setGroupAction("leave");
+                    setGroupConfirmOpen(true);
+                  },
+                },
+              ]
+          : [
+              {
+                label: "Delete chat",
+                icon: "trash-outline" as const,
+                destructive: true,
+                onPress: () => setDeleteConfirmOpen(true),
+              },
+            ]),
+      ]
+    : [];
 
   return (
     <Screen>
@@ -227,6 +409,9 @@ export default function ChatsScreen() {
         renderItem={({ item }) => (
           <ChatListItem
             conversation={item}
+            isPinned={isPinned(item.id)}
+            isFavorite={isFavorite(item.id)}
+            isMuted={isMuted(item.id)}
             onPress={() => openChat(item)}
             onLongPress={() => {
               setSelectedChat(item);
@@ -281,14 +466,7 @@ export default function ChatsScreen() {
       <ActionSheet
         visible={chatMenuOpen}
         title={selectedChat?.title}
-        options={[
-          {
-            label: "Delete chat",
-            icon: "trash-outline",
-            destructive: true,
-            onPress: () => setDeleteConfirmOpen(true),
-          },
-        ]}
+        options={chatMenuOptions}
         onClose={() => setChatMenuOpen(false)}
       />
 
@@ -304,6 +482,54 @@ export default function ChatsScreen() {
           setSelectedChat(null);
         }}
         onConfirm={handleDeleteChat}
+      />
+
+      <ConfirmDialog
+        visible={clearConfirmOpen}
+        title="Clear this chat?"
+        message="This removes the messages from your view. Other members keep their copy."
+        confirmLabel="Clear chat"
+        destructive
+        loading={clearing}
+        onCancel={() => {
+          setClearConfirmOpen(false);
+          setSelectedChat(null);
+        }}
+        onConfirm={handleClearChat}
+      />
+
+      <ConfirmDialog
+        visible={groupConfirmOpen}
+        title={
+          groupAction === "leave" ? "Exit this group?" : "Delete this group?"
+        }
+        message={
+          groupAction === "leave"
+            ? "You will stop receiving messages from this group."
+            : "This removes the group and its messages for everyone. This cannot be undone."
+        }
+        confirmLabel={groupAction === "leave" ? "Exit group" : "Delete group"}
+        destructive
+        loading={groupBusy}
+        onCancel={() => {
+          setGroupConfirmOpen(false);
+          setSelectedChat(null);
+        }}
+        onConfirm={handleGroupAction}
+      />
+
+      <AddPeopleModal
+        key={addPeopleOpen ? "add-open" : "add-closed"}
+        visible={addPeopleOpen}
+        mode="group"
+        contactUserId={selectedChat?.otherUserId}
+        contactName={selectedChat?.title}
+        groups={conversations.filter((item) => item.isGroup)}
+        onClose={() => setAddPeopleOpen(false)}
+        onDone={() => {
+          setSelectedChat(null);
+          refreshChats(true);
+        }}
       />
     </Screen>
   );

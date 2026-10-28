@@ -11,6 +11,7 @@ export type User = {
   onlineStatus?: boolean;
   profilePhotoVisibility?: "everyone" | "nobody";
   lastSeenVisibility?: "everyone" | "nobody";
+  blockedUsers?: (User | string)[];
   needsUsername?: boolean;
   createdAt?: string;
 };
@@ -101,6 +102,10 @@ export type Conversation = {
   online?: boolean;
   memberCount?: number;
   typing?: boolean;
+  groupDescription?: string;
+  groupCreatedBy?: string;
+  groupAdmins?: string[];
+  groupPermissions?: Chat["groupPermissions"];
 };
 
 export type AIHistoryMessage = {

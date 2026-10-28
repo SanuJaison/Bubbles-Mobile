@@ -1,6 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { ReactNode } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../theme";
 
@@ -28,6 +36,8 @@ export const ActionSheet = ({
 }: ActionSheetProps) => {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
+  const maxListHeight = Math.max(220, height * 0.62);
 
   return (
     <Modal
@@ -60,37 +70,43 @@ export const ActionSheet = ({
 
           {header ? <View style={styles.header}>{header}</View> : null}
 
-          {options.map((option) => (
-            <Pressable
-              key={option.label}
-              onPress={() => {
-                onClose();
-                option.onPress();
-              }}
-              style={({ pressed }) => [
-                styles.option,
-                {
-                  backgroundColor: pressed ? colors.surfaceAlt : "transparent",
-                },
-              ]}
-            >
-              {option.icon ? (
-                <Ionicons
-                  name={option.icon}
-                  size={21}
-                  color={option.destructive ? colors.danger : colors.text}
-                />
-              ) : null}
-              <Text
-                style={[
-                  styles.optionText,
-                  { color: option.destructive ? colors.danger : colors.text },
+          <ScrollView
+            style={{ maxHeight: maxListHeight }}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            {options.map((option) => (
+              <Pressable
+                key={option.label}
+                onPress={() => {
+                  onClose();
+                  option.onPress();
+                }}
+                style={({ pressed }) => [
+                  styles.option,
+                  {
+                    backgroundColor: pressed ? colors.surfaceAlt : "transparent",
+                  },
                 ]}
               >
-                {option.label}
-              </Text>
-            </Pressable>
-          ))}
+                {option.icon ? (
+                  <Ionicons
+                    name={option.icon}
+                    size={21}
+                    color={option.destructive ? colors.danger : colors.text}
+                  />
+                ) : null}
+                <Text
+                  style={[
+                    styles.optionText,
+                    { color: option.destructive ? colors.danger : colors.text },
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
 
           <Pressable
             onPress={onClose}

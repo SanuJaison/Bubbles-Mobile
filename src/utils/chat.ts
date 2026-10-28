@@ -41,6 +41,10 @@ export const formatChat = (
       unread: 0,
       memberCount: participants.length,
       online: false,
+      groupDescription: chat.groupDescription || "",
+      groupCreatedBy: chat.groupCreatedBy || "",
+      groupAdmins: (chat.groupAdmins || []).map(String),
+      groupPermissions: chat.groupPermissions,
     };
   }
 

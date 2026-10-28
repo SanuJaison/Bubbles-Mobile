@@ -4,7 +4,7 @@ import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -19,7 +19,15 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { clearChatAPI, deleteChatAPI, getChatByIdAPI } from "../api/chats";
+import { toggleBlockUserAPI, reportUserAPI } from "../api/auth";
+import {
+  clearChatAPI,
+  deleteChatAPI,
+  deleteGroupAPI,
+  getChatByIdAPI,
+  leaveGroupAPI,
+  reportChatAPI,
+} from "../api/chats";
 import { getErrorMessage } from "../api/client";
 import {
   deleteMessageAPI,
@@ -33,6 +41,7 @@ import {
   type PickedFile,
 } from "../api/messages";
 import { ActionSheet, type ActionSheetOption } from "../components/ActionSheet";
+import { AddPeopleModal } from "../components/AddPeopleModal";
 import { Avatar } from "../components/Avatar";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmojiPicker } from "../components/EmojiPicker";
@@ -40,9 +49,11 @@ import { ForwardModal } from "../components/ForwardModal";
 import { InfoDialog } from "../components/InfoDialog";
 import { MessageBubble } from "../components/MessageBubble";
 import { ProfileSheet } from "../components/ProfileSheet";
+import { ReportDialog } from "../components/ReportDialog";
 import { Screen } from "../components/Screen";
 import { CALLS_COMING_SOON } from "../config";
 import { useAuth } from "../context/AuthContext";
+import { useChatPrefs } from "../context/ChatPrefsContext";
 import { useChats } from "../context/ChatsContext";
 import { useSocket } from "../context/SocketContext";
 import { useToast } from "../context/ToastContext";
@@ -76,16 +87,25 @@ export default function ChatScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const { socket } = useSocket();
   const {
     conversations,
+    refreshChats,
     setActiveChatId,
     markChatRead,
     updatePreview,
     upsertConversation,
     removeConversation,
   } = useChats();
+  const {
+    isFavorite,
+    isPinned,
+    isMuted,
+    toggleFavorite,
+    togglePinned,
+    toggleMuted,
+  } = useChatPrefs();
   const params = useLocalSearchParams<{ chatId?: string }>();
   const chatId = String(firstParam(params.chatId) || "");
 
@@ -120,11 +140,30 @@ export default function ChatScreen() {
   const [infoMessage, setInfoMessage] = useState("");
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reporting, setReporting] = useState(false);
+  const [blockConfirmOpen, setBlockConfirmOpen] = useState(false);
+  const [blocking, setBlocking] = useState(false);
+  const [addPeopleOpen, setAddPeopleOpen] = useState(false);
+  const [addPeopleMode, setAddPeopleMode] = useState<"members" | "group">(
+    "members"
+  );
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const [leavingGroup, setLeavingGroup] = useState(false);
+  const [deleteGroupConfirmOpen, setDeleteGroupConfirmOpen] = useState(false);
+  const [deletingGroup, setDeletingGroup] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
 
   const listRef = useRef<FlatList<Message>>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingActive = useRef(false);
   const atBottom = useRef(true);
+  const rootHeight = useRef(0);
+  const hiddenHeight = useRef(0);
+  const keyboardHeight = useRef(0);
 
   const handleVoiceRecorded = useCallback(
     (file: PickedFile) => {
@@ -158,7 +197,120 @@ export default function ChatScreen() {
     }).catch(() => {});
   }, []);
 
+  // Android edge-to-edge builds do not always resize the window when the
+  // keyboard opens. We watch the real layout height and only add the part of
+  // the keyboard that is still overlapping the screen, so the composer is
+  // never hidden and never double-shifted.
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener("keyboardDidShow", (event) => {
+      const height = event.endCoordinates?.height || 0;
+      keyboardHeight.current = height;
+      setKeyboardVisible(true);
+
+      if (Platform.OS !== "android") return;
+
+      setTimeout(() => {
+        const shrunk =
+          hiddenHeight.current > 0 && rootHeight.current > 0
+            ? Math.max(0, hiddenHeight.current - rootHeight.current)
+            : 0;
+        setAndroidKeyboardInset(Math.max(0, height - shrunk));
+      }, 90);
+    });
+
+    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => {
+      keyboardHeight.current = 0;
+      setKeyboardVisible(false);
+      setAndroidKeyboardInset(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  const handleRootLayout = (height: number) => {
+    rootHeight.current = height;
+
+    if (!keyboardVisible) {
+      hiddenHeight.current = height;
+      return;
+    }
+
+    if (Platform.OS !== "android" || keyboardHeight.current <= 0) return;
+
+    const shrunk =
+      hiddenHeight.current > 0
+        ? Math.max(0, hiddenHeight.current - height)
+        : 0;
+    setAndroidKeyboardInset(
+      Math.max(0, keyboardHeight.current - shrunk)
+    );
+  };
+
+  useEffect(() => {
+    if (!keyboardVisible) return;
+
+    const timer = setTimeout(() => {
+      listRef.current?.scrollToEnd({ animated: true });
+    }, 120);
+
+    return () => clearTimeout(timer);
+  }, [keyboardVisible]);
+
   const activeConversation = conversation || contextConversation || null;
+
+  const isGroup = Boolean(activeConversation?.isGroup);
+  const otherUser = activeConversation?.participants.find(
+    (participant) => userIdOf(participant) !== currentUserId
+  );
+  const otherUserId =
+    (otherUser ? userIdOf(otherUser) : "") ||
+    activeConversation?.otherUserId ||
+    "";
+  const isCreator = Boolean(
+    isGroup &&
+      activeConversation?.groupCreatedBy &&
+      String(activeConversation.groupCreatedBy) === currentUserId
+  );
+  const isAdmin = Boolean(
+    isGroup &&
+      (isCreator ||
+        (activeConversation?.groupAdmins || []).some(
+          (adminId) => String(adminId) === currentUserId
+        ))
+  );
+  const canAddMembers =
+    !isGroup ||
+    activeConversation?.groupPermissions?.addMembers !== "admins" ||
+    isAdmin;
+  const canPostInGroup =
+    !isGroup ||
+    activeConversation?.groupPermissions?.sendMessages !== "admins" ||
+    isAdmin;
+  const isBlocked =
+    Boolean(otherUserId) &&
+    (user?.blockedUsers || []).some(
+      (entry) => userIdOf(entry) === otherUserId
+    );
+  const groupConversations = conversations.filter(
+    (item) => item.isGroup
+  );
+
+  const searchTerm = searchQuery.trim().toLowerCase();
+  const visibleMessages = useMemo(() => {
+    if (!searchTerm) return messages;
+
+    return messages.filter((message) => {
+      const fileNames = (message.files || [])
+        .map((file) => file.name)
+        .join(" ");
+      return `${message.text || ""} ${fileNames}`
+        .toLowerCase()
+        .includes(searchTerm);
+    });
+  }, [messages, searchTerm]);
 
   const loadChat = useCallback(
     async (isRefresh = false) => {
@@ -559,6 +711,9 @@ export default function ChatScreen() {
     if (!body && pickedFiles.length === 0) return;
     if (sending || !chatId) return;
 
+    // The picker sits where the keyboard would be, so sending must put the
+    // composer back to its normal state without an extra tap on the emoji icon.
+    setEmojiPickerOpen(false);
     stopTyping();
 
     if (editingMessage) {
@@ -835,6 +990,118 @@ export default function ChatScreen() {
     }
   };
 
+  const handleToggleBlock = async () => {
+    if (!otherUserId || blocking) return;
+
+    setBlocking(true);
+
+    try {
+      const response = await toggleBlockUserAPI(otherUserId);
+      const updatedUser = response.data?.user;
+
+      if (updatedUser) {
+        await updateUser(updatedUser);
+      }
+
+      setBlockConfirmOpen(false);
+      showToast(
+        response.data?.blocked ? "User blocked" : "User unblocked",
+        "success"
+      );
+    } catch (error) {
+      showToast(
+        getErrorMessage(error, "Unable to update this block."),
+        "error"
+      );
+    } finally {
+      setBlocking(false);
+    }
+  };
+
+  const handleReport = async (payload: {
+    reason: string;
+    details: string;
+  }) => {
+    if (reporting) return;
+
+    setReporting(true);
+
+    try {
+      if (isGroup) {
+        await reportChatAPI(chatId, payload);
+      } else if (otherUserId) {
+        await reportUserAPI(otherUserId, { ...payload, chatId });
+      }
+
+      setReportOpen(false);
+      showToast("Report sent. Thank you for letting us know.", "success");
+    } catch (error) {
+      showToast(
+        getErrorMessage(error, "Unable to send this report."),
+        "error"
+      );
+    } finally {
+      setReporting(false);
+    }
+  };
+
+  const handleLeaveGroup = async () => {
+    if (leavingGroup) return;
+    setLeavingGroup(true);
+
+    try {
+      await leaveGroupAPI(chatId);
+      removeConversation(chatId);
+      setLeaveConfirmOpen(false);
+      showToast("You left the group", "success");
+      router.back();
+    } catch (error) {
+      showToast(
+        getErrorMessage(error, "Unable to leave this group."),
+        "error"
+      );
+    } finally {
+      setLeavingGroup(false);
+    }
+  };
+
+  const handleDeleteGroup = async () => {
+    if (deletingGroup) return;
+    setDeletingGroup(true);
+
+    try {
+      await deleteGroupAPI(chatId);
+      removeConversation(chatId);
+      setDeleteGroupConfirmOpen(false);
+      showToast("Group deleted", "success");
+      router.back();
+    } catch (error) {
+      showToast(
+        getErrorMessage(error, "Unable to delete this group."),
+        "error"
+      );
+    } finally {
+      setDeletingGroup(false);
+    }
+  };
+
+  const openSearchInChat = () => {
+    setProfileOpen(false);
+    setSearchOpen(true);
+    setSearchQuery("");
+  };
+
+  const openAddPeople = () => {
+    if (!canAddMembers) {
+      showToast("Only group admins can add members.", "info");
+      return;
+    }
+
+    setProfileOpen(false);
+    setAddPeopleMode(isGroup ? "members" : "group");
+    setAddPeopleOpen(true);
+  };
+
   const messageOptions: ActionSheetOption[] = (() => {
     if (!selectedMessage) return [];
 
@@ -891,22 +1158,103 @@ export default function ChatScreen() {
 
   const headerOptions: ActionSheetOption[] = [
     {
-      label: activeConversation?.isGroup ? "Group info" : "View profile",
-      icon: "person-circle-outline",
+      label: isGroup ? "Group info" : "User info",
+      icon: isGroup ? "people-outline" : "person-circle-outline",
       onPress: () => setProfileOpen(true),
     },
-    {
-      label: "Clear chat",
-      icon: "sparkles-outline",
-      onPress: () => setClearConfirmOpen(true),
-    },
-    {
-      label: "Delete chat",
-      icon: "trash-outline",
-      destructive: true,
-      onPress: () => setDeleteChatConfirmOpen(true),
-    },
   ];
+
+  if (canAddMembers) {
+    headerOptions.push({
+      label: isGroup ? "Add members" : "Add to group",
+      icon: "person-add-outline",
+      onPress: openAddPeople,
+    });
+  }
+
+  headerOptions.push(
+    {
+      label: "Search in chat",
+      icon: "search-outline",
+      onPress: openSearchInChat,
+    },
+    {
+      label: isFavorite(chatId)
+        ? "Remove from favourites"
+        : "Add to favourites",
+      icon: isFavorite(chatId) ? "star" : "star-outline",
+      onPress: () => {
+        const active = isFavorite(chatId);
+        toggleFavorite(chatId);
+        showToast(
+          active ? "Removed from favourites" : "Added to favourites",
+          "success"
+        );
+      },
+    },
+    {
+      label: isPinned(chatId) ? "Unpin chat" : "Pin chat to top",
+      icon: isPinned(chatId) ? "pin-outline" : "pin",
+      onPress: () => {
+        const active = isPinned(chatId);
+        togglePinned(chatId);
+        showToast(active ? "Chat unpinned" : "Chat pinned to top", "success");
+      },
+    },
+    {
+      label: isMuted(chatId) ? "Unmute notifications" : "Mute notifications",
+      icon: isMuted(chatId)
+        ? "notifications-outline"
+        : "notifications-off-outline",
+      onPress: () => {
+        const active = isMuted(chatId);
+        toggleMuted(chatId);
+        showToast(
+          active ? "Notifications unmuted" : "Notifications muted",
+          "success"
+        );
+      },
+    }
+  );
+
+  if (!isCreator) {
+    headerOptions.push({
+      label: isGroup ? "Report group" : "Report user",
+      icon: "flag-outline",
+      onPress: () => setReportOpen(true),
+    });
+  }
+
+  if (!isGroup && otherUserId) {
+    headerOptions.push({
+      label: isBlocked ? "Unblock user" : "Block user",
+      icon: isBlocked ? "lock-open-outline" : "ban-outline",
+      onPress: () => setBlockConfirmOpen(true),
+    });
+  }
+
+  headerOptions.push({
+    label: "Clear chat",
+    icon: "sparkles-outline",
+    onPress: () => setClearConfirmOpen(true),
+  });
+
+  if (isGroup && !isCreator) {
+    headerOptions.push({
+      label: "Exit group",
+      icon: "log-out-outline",
+      destructive: true,
+      onPress: () => setLeaveConfirmOpen(true),
+    });
+  }
+
+  headerOptions.push({
+    label: isGroup ? "Delete group" : "Delete chat",
+    icon: "trash-outline",
+    destructive: true,
+    onPress: () =>
+      isGroup ? setDeleteGroupConfirmOpen(true) : setDeleteChatConfirmOpen(true),
+  });
 
   const typingLabel =
     typingNames.length === 0
@@ -1030,10 +1378,16 @@ export default function ChatScreen() {
 
   return (
     <Screen>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      <View
+        style={[styles.flex, { paddingBottom: androidKeyboardInset }]}
+        onLayout={(event) =>
+          handleRootLayout(event.nativeEvent.layout.height)
+        }
       >
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
         <View
           style={[
             styles.header,
@@ -1125,6 +1479,45 @@ export default function ChatScreen() {
           </Pressable>
         </View>
 
+        {searchOpen ? (
+          <View
+            style={[
+              styles.searchBar,
+              {
+                backgroundColor: colors.surface,
+                borderBottomColor: colors.border,
+              },
+            ]}
+          >
+            <Ionicons name="search-outline" size={18} color={colors.textSoft} />
+            <TextInput
+              autoFocus
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search in this chat"
+              placeholderTextColor={colors.textSoft}
+              selectionColor={colors.primary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={[styles.searchInput, { color: colors.text }]}
+            />
+            {searchTerm ? (
+              <Text style={[styles.searchCount, { color: colors.textMuted }]}>
+                {visibleMessages.length}
+              </Text>
+            ) : null}
+            <Pressable
+              onPress={() => {
+                setSearchOpen(false);
+                setSearchQuery("");
+              }}
+              hitSlop={8}
+            >
+              <Ionicons name="close" size={20} color={colors.textMuted} />
+            </Pressable>
+          </View>
+        ) : null}
+
         {loadError ? (
           <View
             style={[
@@ -1145,7 +1538,7 @@ export default function ChatScreen() {
 
         <FlatList
           ref={listRef}
-          data={messages}
+          data={visibleMessages}
           keyExtractor={(item) => item._id}
           renderItem={renderMessage}
           contentContainerStyle={styles.messageList}
@@ -1164,6 +1557,27 @@ export default function ChatScreen() {
             loading ? (
               <View style={styles.center}>
                 <ActivityIndicator color={colors.primary} />
+              </View>
+            ) : searchTerm ? (
+              <View style={styles.emptyChat}>
+                <View
+                  style={[
+                    styles.emptyIcon,
+                    { backgroundColor: colors.primarySoft },
+                  ]}
+                >
+                  <Ionicons
+                    name="search-outline"
+                    size={28}
+                    color={colors.primary}
+                  />
+                </View>
+                <Text style={[styles.emptyTitle, { color: colors.text }]}>
+                  No messages found
+                </Text>
+                <Text style={[styles.emptyCopy, { color: colors.textMuted }]}>
+                  Try a different word or close the search.
+                </Text>
               </View>
             ) : (
               <View style={styles.emptyChat}>
@@ -1212,7 +1626,9 @@ export default function ChatScreen() {
             {
               backgroundColor: colors.surface,
               borderTopColor: colors.border,
-              paddingBottom: Math.max(insets.bottom, 9),
+              paddingBottom: keyboardVisible
+                ? 8
+                : Math.max(insets.bottom, 9),
             },
           ]}
         >
@@ -1352,6 +1768,33 @@ export default function ChatScreen() {
             <EmojiPicker onSelect={handleEmojiSelect} />
           ) : null}
 
+          {isBlocked || !canPostInGroup ? (
+            <View
+              style={[styles.noticeBar, { backgroundColor: colors.surfaceAlt }]}
+            >
+              <Ionicons
+                name="lock-closed-outline"
+                size={15}
+                color={colors.textMuted}
+              />
+              <Text style={[styles.noticeText, { color: colors.textMuted }]}>
+                {isBlocked
+                  ? "You blocked this user. Unblock to send messages."
+                  : "Only admins can send messages in this group."}
+              </Text>
+              {isBlocked ? (
+                <Pressable
+                  onPress={() => setBlockConfirmOpen(true)}
+                  hitSlop={6}
+                >
+                  <Text style={[styles.noticeAction, { color: colors.primary }]}>
+                    Unblock
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+
           <View style={styles.composerRow}>
             <Pressable
               onPress={() => setAttachMenuOpen(true)}
@@ -1376,7 +1819,7 @@ export default function ChatScreen() {
               }
               placeholderTextColor={colors.textSoft}
               selectionColor={colors.primary}
-              editable={!isRecording}
+              editable={!isRecording && !isBlocked && canPostInGroup}
               multiline
               maxLength={10000}
               style={[
@@ -1466,7 +1909,8 @@ export default function ChatScreen() {
             )}
           </View>
         </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </View>
 
       <ActionSheet
         visible={messageMenuOpen}
@@ -1549,8 +1993,111 @@ export default function ChatScreen() {
       <ProfileSheet
         visible={profileOpen}
         conversation={activeConversation}
+        messages={messages}
         currentUserId={currentUserId}
+        isMuted={isMuted(chatId)}
+        isBlocked={isBlocked}
+        busy={blocking || reporting || leavingGroup || deletingGroup}
         onClose={() => setProfileOpen(false)}
+        onToggleMute={() => {
+          const active = isMuted(chatId);
+          toggleMuted(chatId);
+          showToast(
+            active ? "Notifications unmuted" : "Notifications muted",
+            "success"
+          );
+        }}
+        onToggleBlock={() => {
+          setProfileOpen(false);
+          setBlockConfirmOpen(true);
+        }}
+        onReport={() => {
+          setProfileOpen(false);
+          setReportOpen(true);
+        }}
+        onClearChat={() => {
+          setProfileOpen(false);
+          setClearConfirmOpen(true);
+        }}
+        onDeleteChat={() => {
+          setProfileOpen(false);
+          setDeleteChatConfirmOpen(true);
+        }}
+        onSearchInChat={openSearchInChat}
+        onAddPeople={openAddPeople}
+        onLeaveGroup={() => {
+          setProfileOpen(false);
+          setLeaveConfirmOpen(true);
+        }}
+        onDeleteGroup={() => {
+          setProfileOpen(false);
+          setDeleteGroupConfirmOpen(true);
+        }}
+        onVoiceCall={() => setInfoMessage(CALLS_COMING_SOON)}
+        onVideoCall={() => setInfoMessage(CALLS_COMING_SOON)}
+      />
+
+      <AddPeopleModal
+        key={addPeopleOpen ? `add-${addPeopleMode}` : "add-closed"}
+        visible={addPeopleOpen}
+        mode={addPeopleMode}
+        conversation={activeConversation}
+        contactUserId={otherUserId}
+        contactName={otherUser?.name}
+        groups={groupConversations}
+        onClose={() => setAddPeopleOpen(false)}
+        onDone={(targetId) => {
+          if (targetId === chatId) loadChat();
+          refreshChats(true);
+        }}
+      />
+
+      <ReportDialog
+        key={reportOpen ? "report-open" : "report-closed"}
+        visible={reportOpen}
+        targetName={
+          isGroup ? activeConversation?.title : otherUser?.name
+        }
+        busy={reporting}
+        onClose={() => setReportOpen(false)}
+        onSubmit={handleReport}
+      />
+
+      <ConfirmDialog
+        visible={blockConfirmOpen}
+        title={isBlocked ? "Unblock this user?" : "Block this user?"}
+        message={
+          isBlocked
+            ? "They will be able to message you again."
+            : "They will no longer be able to message you."
+        }
+        confirmLabel={isBlocked ? "Unblock" : "Block"}
+        destructive={!isBlocked}
+        loading={blocking}
+        onCancel={() => setBlockConfirmOpen(false)}
+        onConfirm={handleToggleBlock}
+      />
+
+      <ConfirmDialog
+        visible={leaveConfirmOpen}
+        title="Exit this group?"
+        message="You will stop receiving messages from this group."
+        confirmLabel="Exit group"
+        destructive
+        loading={leavingGroup}
+        onCancel={() => setLeaveConfirmOpen(false)}
+        onConfirm={handleLeaveGroup}
+      />
+
+      <ConfirmDialog
+        visible={deleteGroupConfirmOpen}
+        title="Delete this group?"
+        message="This removes the group and its messages for everyone. This cannot be undone."
+        confirmLabel="Delete group"
+        destructive
+        loading={deletingGroup}
+        onCancel={() => setDeleteGroupConfirmOpen(false)}
+        onConfirm={handleDeleteGroup}
       />
 
       <InfoDialog
@@ -1730,6 +2277,41 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     paddingHorizontal: 10,
     paddingTop: 8,
+  },
+  noticeBar: {
+    minHeight: 38,
+    borderRadius: 11,
+    paddingHorizontal: 10,
+    marginBottom: 7,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  noticeText: {
+    flex: 1,
+    fontSize: 11.5,
+    lineHeight: 16,
+  },
+  noticeAction: {
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  searchBar: {
+    minHeight: 50,
+    borderBottomWidth: 1,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 10,
+    fontSize: 14,
+  },
+  searchCount: {
+    fontSize: 11.5,
+    fontWeight: "700",
   },
   contextBar: {
     borderLeftWidth: 3,

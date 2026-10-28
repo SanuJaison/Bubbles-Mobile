@@ -19,6 +19,7 @@
         "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": true,
+      "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.READ_MEDIA_IMAGES"
@@ -52,7 +53,8 @@
           "microphonePermission": "Bubbles needs access to your microphone so you can record voice messages.",
           "enableBackgroundPlayback": false
         }
-      ]
+      ],
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true
