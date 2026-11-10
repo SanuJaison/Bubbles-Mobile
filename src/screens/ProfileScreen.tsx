@@ -256,6 +256,12 @@ export default function ProfileScreen() {
             ]}
           >
             <Row
+              icon="settings-outline"
+              label="Settings"
+              onPress={() => router.push("/settings")}
+            />
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <Row
               icon="create-outline"
               label="Edit profile"
               onPress={() => router.push("/edit-profile")}

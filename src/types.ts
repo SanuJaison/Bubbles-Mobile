@@ -9,8 +9,13 @@ export type User = {
   isOnline?: boolean;
   lastSeen?: string | null;
   onlineStatus?: boolean;
-  profilePhotoVisibility?: "everyone" | "nobody";
-  lastSeenVisibility?: "everyone" | "nobody";
+  profilePhotoVisibility?: "everyone" | "contacts" | "nobody";
+  lastSeenVisibility?: "everyone" | "contacts" | "nobody";
+  readReceipts?: boolean;
+  enterToSend?: boolean;
+  messageNotifications?: boolean;
+  notificationSound?: boolean;
+  chatWallpaper?: string;
   blockedUsers?: (User | string)[];
   needsUsername?: boolean;
   createdAt?: string;
@@ -55,6 +60,8 @@ export type Message = {
   isEdited?: boolean;
   isForwarded?: boolean;
   isPinned?: boolean;
+  pinnedAt?: string | null;
+  pinnedBy?: User | string | null;
   callInfo?: {
     callType?: "audio" | "video";
     status?: "completed" | "missed" | "declined" | "cancelled";

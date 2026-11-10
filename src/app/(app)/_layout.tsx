@@ -24,6 +24,10 @@ export default function AppLayout() {
         name="edit-profile"
         options={{ animation: "slide_from_right" }}
       />
+      <Stack.Screen
+        name="settings"
+        options={{ animation: "slide_from_right" }}
+      />
     </Stack>
   );
 }

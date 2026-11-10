@@ -18,4 +18,3 @@ export const FEEDBACK_URL = `${WEB_URL}/feedback`;
 export const PRIVACY_URL = `${WEB_URL}/privacy`;
 export const TERMS_URL = `${WEB_URL}/terms`;
 export const DOWNLOAD_URL = "https://github.com/SanuJaison/Bubbles/releases/latest";
-export const CALLS_COMING_SOON = "Calls are coming soon on Android.";

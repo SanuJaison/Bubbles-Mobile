@@ -1,6 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { useVideoPlayer, VideoView } from "expo-video";
-import { useState } from "react";
+import * as VideoThumbnails from "expo-video-thumbnails";
+import { useEffect, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../theme";
@@ -11,6 +13,10 @@ type VideoMessageProps = {
   file: Attachment;
   isMine: boolean;
 };
+
+// Generating a thumbnail costs a decode, so keep the result for the session.
+// The file itself lives in the cache directory, which survives re-renders.
+const thumbnailCache = new Map<string, string>();
 
 const VideoPlayerModal = ({
   file,
@@ -74,7 +80,33 @@ const VideoPlayerModal = ({
 export const VideoMessage = ({ file, isMine }: VideoMessageProps) => {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
+  const [thumbnail, setThumbnail] = useState<string | null>(
+    thumbnailCache.get(file.url) || null
+  );
   const duration = Number(file.duration || 0);
+
+  useEffect(() => {
+    if (thumbnail) return;
+
+    let active = true;
+
+    VideoThumbnails.getThumbnailAsync(file.url, {
+      time: 400,
+      quality: 0.7,
+    })
+      .then((result) => {
+        if (!result?.uri) return;
+        thumbnailCache.set(file.url, result.uri);
+        if (active) setThumbnail(result.uri);
+      })
+      .catch(() => {
+        // A remote or unsupported clip just keeps the placeholder.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [file.url, thumbnail]);
 
   return (
     <>
@@ -90,6 +122,25 @@ export const VideoMessage = ({ file, isMine }: VideoMessageProps) => {
         ]}
       >
         <View style={styles.preview}>
+          {thumbnail ? (
+            <Image
+              source={{ uri: thumbnail }}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              transition={160}
+            />
+          ) : (
+            <View style={styles.placeholder}>
+              <Ionicons
+                name="videocam-outline"
+                size={30}
+                color="rgba(255,255,255,0.65)"
+              />
+            </View>
+          )}
+
+          <View style={styles.scrim} />
+
           <View style={styles.playCircle}>
             <Ionicons name="play" size={24} color="#FFFFFF" />
           </View>
@@ -133,10 +184,28 @@ const styles = StyleSheet.create({
   },
   preview: {
     width: "100%",
-    height: 140,
+    height: 148,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: "#0B0712",
+  },
+  placeholder: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(20, 14, 32, 0.9)",
+  },
+  scrim: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.18)",
   },
   playCircle: {
     width: 54,
@@ -144,9 +213,9 @@ const styles = StyleSheet.create({
     borderRadius: 27,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.22)",
+    backgroundColor: "rgba(0,0,0,0.42)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.55)",
+    borderColor: "rgba(255,255,255,0.7)",
   },
   durationPill: {
     position: "absolute",

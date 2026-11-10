@@ -25,6 +25,7 @@ type ChatsContextValue = {
   refreshChats: (silent?: boolean) => Promise<void>;
   upsertConversation: (chat: Chat) => Conversation | null;
   markChatRead: (chatId: string) => void;
+  markChatUnread: (chatId: string) => void;
   removeConversation: (chatId: string) => void;
   updatePreview: (
     chatId: string,
@@ -138,6 +139,16 @@ export const ChatsProvider = ({ children }: { children: ReactNode }) => {
       previous.map((conversation) =>
         conversation.id === chatId
           ? { ...conversation, unread: 0 }
+          : conversation
+      )
+    );
+  }, []);
+
+  const markChatUnread = useCallback((chatId: string) => {
+    setConversations((previous) =>
+      previous.map((conversation) =>
+        conversation.id === chatId
+          ? { ...conversation, unread: Math.max(1, conversation.unread || 0) }
           : conversation
       )
     );
@@ -264,6 +275,7 @@ export const ChatsProvider = ({ children }: { children: ReactNode }) => {
       refreshChats,
       upsertConversation,
       markChatRead,
+      markChatUnread,
       removeConversation,
       updatePreview,
     }),
@@ -277,6 +289,7 @@ export const ChatsProvider = ({ children }: { children: ReactNode }) => {
       refreshChats,
       upsertConversation,
       markChatRead,
+      markChatUnread,
       removeConversation,
       updatePreview,
     ]

@@ -1,97 +1,219 @@
 import { Ionicons } from "@expo/vector-icons";
-import { StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import {
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { Avatar } from "../components/Avatar";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Screen } from "../components/Screen";
-import { CALLS_COMING_SOON } from "../config";
+import { useCall, type CallHistoryEntry } from "../context/CallContext";
 import { useTheme } from "../theme";
+import { formatListTime } from "../utils/format";
+
+const statusLabel = (entry: CallHistoryEntry) => {
+  if (entry.status === "missed") return "Missed";
+  if (entry.status === "declined") return "Declined";
+  if (entry.status === "cancelled") return "Cancelled";
+
+  if (entry.duration > 0) {
+    const minutes = Math.floor(entry.duration / 60);
+    const seconds = (entry.duration % 60).toString().padStart(2, "0");
+    return `Completed · ${minutes}:${seconds}`;
+  }
+
+  return "Completed";
+};
 
 const CallRow = ({
-  icon,
-  title,
-  description,
+  entry,
+  onCallBack,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  description: string;
+  entry: CallHistoryEntry;
+  onCallBack: () => void;
 }) => {
   const { colors } = useTheme();
+  const missed = entry.status === "missed";
+  const declined = entry.status === "declined";
 
   return (
-    <View
-      style={[
+    <Pressable
+      onPress={onCallBack}
+      accessibilityLabel={`Call ${entry.remoteUser.name} back`}
+      style={({ pressed }) => [
         styles.callRow,
-        { backgroundColor: colors.surface, borderColor: colors.border },
+        {
+          backgroundColor: colors.surface,
+          borderColor: colors.border,
+          opacity: pressed ? 0.8 : 1,
+        },
       ]}
     >
-      <View style={[styles.callIcon, { backgroundColor: colors.primarySoft }]}>
-        <Ionicons name={icon} size={22} color={colors.primary} />
-      </View>
+      <Avatar
+        name={entry.remoteUser.name}
+        uri={entry.remoteUser.profilePicture}
+        size={46}
+      />
+
       <View style={styles.callText}>
-        <Text style={[styles.callTitle, { color: colors.text }]}>{title}</Text>
-        <Text style={[styles.callCopy, { color: colors.textMuted }]}>
-          {description}
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.callTitle,
+            { color: missed || declined ? colors.danger : colors.text },
+          ]}
+        >
+          {entry.remoteUser.name}
         </Text>
+
+        <View style={styles.callMeta}>
+          <Ionicons
+            name={entry.direction === "outgoing" ? "arrow-up" : "arrow-down"}
+            size={12}
+            color={missed || declined ? colors.danger : colors.textMuted}
+          />
+          <Text
+            style={[
+              styles.callCopy,
+              { color: missed || declined ? colors.danger : colors.textMuted },
+            ]}
+          >
+            {statusLabel(entry)}
+          </Text>
+          <Text style={[styles.callDot, { color: colors.textSoft }]}>·</Text>
+          <Text style={[styles.callCopy, { color: colors.textMuted }]}>
+            {formatListTime(entry.at)}
+          </Text>
+        </View>
       </View>
-      <View style={[styles.badge, { backgroundColor: colors.surfaceAlt }]}>
-        <Text style={[styles.badgeText, { color: colors.textSoft }]}>
-          Soon
-        </Text>
+
+      <View
+        style={[styles.callIcon, { backgroundColor: colors.primarySoft }]}
+      >
+        <Ionicons
+          name={entry.type === "video" ? "videocam" : "call"}
+          size={19}
+          color={colors.primary}
+        />
       </View>
-    </View>
+    </Pressable>
   );
 };
 
 export default function CallsScreen() {
   const { colors } = useTheme();
+  const { history, startCall, clearHistory, supported } = useCall();
+  const [clearOpen, setClearOpen] = useState(false);
+
+  const callBack = (entry: CallHistoryEntry) => {
+    startCall({
+      userId: entry.remoteUser.id,
+      name: entry.remoteUser.name,
+      username: entry.remoteUser.username,
+      profilePicture: entry.remoteUser.profilePicture,
+      chatId: entry.chatId,
+      type: entry.type,
+    }).catch(() => {});
+  };
 
   return (
     <Screen>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>Calls</Text>
-        <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-          Voice and video, without leaving the conversation
-        </Text>
-      </View>
-
-      <View
-        style={[
-          styles.hero,
-          {
-            backgroundColor: colors.surface,
-            borderColor: colors.border,
-          },
-        ]}
-      >
-        <View style={[styles.heroIcon, { backgroundColor: colors.primarySoft }]}>
-          <Ionicons name="call-outline" size={34} color={colors.primary} />
+        <View style={styles.headerText}>
+          <Text style={[styles.title, { color: colors.text }]}>Calls</Text>
+          <Text style={[styles.subtitle, { color: colors.textMuted }]}>
+            Voice and video, without leaving the conversation
+          </Text>
         </View>
-        <Text style={[styles.heroTitle, { color: colors.text }]}>
-          {CALLS_COMING_SOON}
-        </Text>
-        <Text style={[styles.heroCopy, { color: colors.textMuted }]}>
-          Your chats, groups, files, and Bubbles AI are ready now. Calls will
-          arrive in a future Android update.
-        </Text>
+
+        {history.length > 0 ? (
+          <Pressable
+            onPress={() => setClearOpen(true)}
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.clearButton,
+              {
+                backgroundColor: colors.surfaceAlt,
+                opacity: pressed ? 0.7 : 1,
+              },
+            ]}
+          >
+            <Text style={[styles.clearText, { color: colors.textMuted }]}>
+              Clear
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
 
-      <View style={styles.list}>
-        <CallRow
-          icon="call-outline"
-          title="Voice call"
-          description="Start a one-to-one or group voice call."
-        />
-        <CallRow
-          icon="videocam-outline"
-          title="Video call"
-          description="See the people you are talking to."
-        />
-      </View>
+      {!supported ? (
+        <View
+          style={[
+            styles.notice,
+            {
+              backgroundColor: colors.primarySoft,
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <Ionicons
+            name="information-circle-outline"
+            size={18}
+            color={colors.primary}
+          />
+          <Text style={[styles.noticeText, { color: colors.textMuted }]}>
+            Calls need the installed Bubbles app. Expo Go does not include the
+            calling engine.
+          </Text>
+        </View>
+      ) : null}
 
-      <View style={styles.empty}>
-        <Ionicons name="time-outline" size={22} color={colors.textSoft} />
-        <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-          Recent calls will appear here once calling is available.
-        </Text>
-      </View>
+      <FlatList
+        data={history}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={[
+          styles.list,
+          history.length === 0 && styles.listEmpty,
+        ]}
+        renderItem={({ item }) => (
+          <CallRow entry={item} onCallBack={() => callBack(item)} />
+        )}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <View
+              style={[styles.emptyIcon, { backgroundColor: colors.primarySoft }]}
+            >
+              <Ionicons
+                name="call-outline"
+                size={30}
+                color={colors.primary}
+              />
+            </View>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>
+              No calls yet
+            </Text>
+            <Text style={[styles.emptyCopy, { color: colors.textMuted }]}>
+              Start a voice or video call from any direct chat. Your recent
+              calls will appear here.
+            </Text>
+          </View>
+        }
+      />
+
+      <ConfirmDialog
+        visible={clearOpen}
+        title="Clear call history?"
+        message="This only clears the list on this device. Calls in your chats stay where they are."
+        confirmLabel="Clear"
+        destructive
+        onCancel={() => setClearOpen(false)}
+        onConfirm={() => {
+          clearHistory().catch(() => {});
+          setClearOpen(false);
+        }}
+      />
     </Screen>
   );
 }
@@ -100,7 +222,14 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 18,
+    paddingBottom: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  headerText: {
+    flex: 1,
+    minWidth: 0,
   },
   title: {
     fontSize: 29,
@@ -112,53 +241,48 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     lineHeight: 18,
   },
-  hero: {
+  clearButton: {
+    borderRadius: 999,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+  },
+  clearText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  notice: {
     marginHorizontal: 18,
-    borderRadius: 24,
+    marginBottom: 12,
+    borderRadius: 14,
     borderWidth: 1,
-    paddingHorizontal: 22,
-    paddingVertical: 26,
-    alignItems: "center",
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
   },
-  heroIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 25,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16,
-  },
-  heroTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    textAlign: "center",
-  },
-  heroCopy: {
-    marginTop: 9,
-    fontSize: 13.5,
-    lineHeight: 20,
-    textAlign: "center",
+  noticeText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
   },
   list: {
-    marginTop: 18,
     paddingHorizontal: 18,
-    gap: 10,
+    paddingBottom: 24,
+    gap: 9,
+  },
+  listEmpty: {
+    flexGrow: 1,
+    justifyContent: "center",
   },
   callRow: {
-    minHeight: 74,
+    minHeight: 76,
     borderRadius: 18,
     borderWidth: 1,
-    paddingHorizontal: 14,
+    paddingHorizontal: 13,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-  },
-  callIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
   },
   callText: {
     flex: 1,
@@ -168,32 +292,47 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     fontWeight: "700",
   },
+  callMeta: {
+    marginTop: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
   callCopy: {
-    marginTop: 3,
     fontSize: 11.5,
-    lineHeight: 16,
+    fontWeight: "600",
   },
-  badge: {
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+  callDot: {
+    fontSize: 11.5,
+    fontWeight: "700",
   },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
+  callIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
   },
   empty: {
-    marginTop: "auto",
-    marginBottom: 28,
-    paddingHorizontal: 36,
     alignItems: "center",
-    gap: 8,
+    paddingHorizontal: 34,
+    gap: 9,
   },
-  emptyText: {
-    fontSize: 12.5,
-    lineHeight: 18,
+  emptyIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
+  },
+  emptyTitle: {
+    fontSize: 19,
+    fontWeight: "800",
+  },
+  emptyCopy: {
+    fontSize: 13,
+    lineHeight: 19,
     textAlign: "center",
   },
 });

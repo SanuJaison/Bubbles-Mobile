@@ -89,6 +89,9 @@ export const editMessageAPI = (messageId: string, text: string) =>
 export const forwardMessageAPI = (messageId: string, chatIds: string[]) =>
   api.post("/messages/forward", { messageId, chatIds });
 
+export const togglePinMessageAPI = (messageId: string) =>
+  api.patch<{ data: Message }>(`/messages/pin/${messageId}`);
+
 export const toggleMessageReactionAPI = (messageId: string, emoji: string) =>
   api.patch<{ reactions: MessageReaction[] }>(
     `/messages/${messageId}/reaction`,

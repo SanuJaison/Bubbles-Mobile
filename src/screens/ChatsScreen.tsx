@@ -6,6 +6,7 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -13,6 +14,7 @@ import {
 } from "react-native";
 import { deleteChatAPI, deleteGroupAPI, clearChatAPI, leaveGroupAPI } from "../api/chats";
 import { getErrorMessage } from "../api/client";
+import { markMessagesAsReadAPI } from "../api/messages";
 import { ActionSheet, type ActionSheetOption } from "../components/ActionSheet";
 import { AddPeopleModal } from "../components/AddPeopleModal";
 import { BrandMark } from "../components/BrandMark";
@@ -46,8 +48,13 @@ export default function ChatsScreen() {
     error,
     refreshChats,
     removeConversation,
+    markChatRead,
+    markChatUnread,
   } = useChats();
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<
+    "all" | "unread" | "favorites" | "groups" | "archived"
+  >("all");
   const [aiSummary, setAiSummary] = useState<AISummary>({
     hasConversation: false,
     lastMessage: "",
@@ -68,9 +75,11 @@ export default function ChatsScreen() {
     isFavorite,
     isPinned,
     isMuted,
+    isArchived,
     toggleFavorite,
     togglePinned,
     toggleMuted,
+    toggleArchived,
   } = useChatPrefs();
 
   const currentUserId = userIdOf(user);
@@ -99,9 +108,22 @@ export default function ChatsScreen() {
   }, [conversations, isPinned]);
 
   const filteredChats = useMemo(() => {
-    if (!query) return sortedChats;
+    const scoped = sortedChats.filter((conversation) => {
+      const archived = isArchived(conversation.id);
 
-    return sortedChats.filter((conversation) => {
+      if (filter === "archived") return archived;
+      if (archived) return false;
+
+      if (filter === "unread") return conversation.unread > 0;
+      if (filter === "favorites") return isFavorite(conversation.id);
+      if (filter === "groups") return conversation.isGroup;
+
+      return true;
+    });
+
+    if (!query) return scoped;
+
+    return scoped.filter((conversation) => {
       const haystack = [
         conversation.title,
         conversation.lastMessage,
@@ -112,7 +134,40 @@ export default function ChatsScreen() {
 
       return haystack.includes(query);
     });
-  }, [sortedChats, query]);
+  }, [sortedChats, query, filter, isArchived, isFavorite]);
+
+  const filterOptions = useMemo(() => {
+    const active = conversations.filter(
+      (conversation) => !isArchived(conversation.id)
+    );
+
+    return [
+      { id: "all" as const, label: "All", count: active.length },
+      {
+        id: "unread" as const,
+        label: "Unread",
+        count: active.filter((conversation) => conversation.unread > 0).length,
+      },
+      {
+        id: "favorites" as const,
+        label: "Favourites",
+        count: active.filter((conversation) => isFavorite(conversation.id))
+          .length,
+      },
+      {
+        id: "groups" as const,
+        label: "Groups",
+        count: active.filter((conversation) => conversation.isGroup).length,
+      },
+      {
+        id: "archived" as const,
+        label: "Archived",
+        count: conversations.filter((conversation) =>
+          isArchived(conversation.id)
+        ).length,
+      },
+    ];
+  }, [conversations, isArchived, isFavorite]);
 
   const showAI =
     aiSummary.hasConversation &&
@@ -224,6 +279,7 @@ export default function ChatsScreen() {
   const selectedIsPinned = isPinned(selectedChat?.id);
   const selectedIsFavorite = isFavorite(selectedChat?.id);
   const selectedIsMuted = isMuted(selectedChat?.id);
+  const selectedIsArchived = isArchived(selectedChat?.id);
 
   const chatMenuOptions: ActionSheetOption[] = selectedChat
     ? [
@@ -275,6 +331,34 @@ export default function ChatsScreen() {
               selectedIsMuted
                 ? "Notifications unmuted"
                 : "Notifications muted",
+              "success"
+            );
+          },
+        },
+        {
+          label: selectedChat.unread > 0 ? "Mark as read" : "Mark as unread",
+          icon:
+            selectedChat.unread > 0
+              ? "checkmark-done-outline"
+              : "ellipse-outline",
+          onPress: () => {
+            if (selectedChat.unread > 0) {
+              markMessagesAsReadAPI(selectedChat.id).catch(() => {});
+              markChatRead(selectedChat.id);
+              showToast("Marked as read", "success");
+            } else {
+              markChatUnread(selectedChat.id);
+              showToast("Marked as unread", "success");
+            }
+          },
+        },
+        {
+          label: selectedIsArchived ? "Unarchive chat" : "Archive chat",
+          icon: "archive-outline",
+          onPress: () => {
+            toggleArchived(selectedChat.id);
+            showToast(
+              selectedIsArchived ? "Chat unarchived" : "Chat archived",
               "success"
             );
           },
@@ -371,6 +455,61 @@ export default function ChatsScreen() {
         ) : null}
       </View>
 
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filters}
+      >
+        {filterOptions.map((option) => {
+          const active = filter === option.id;
+
+          return (
+            <Pressable
+              key={option.id}
+              onPress={() => setFilter(option.id)}
+              style={({ pressed }) => [
+                styles.filterChip,
+                {
+                  backgroundColor: active ? colors.primary : colors.surface,
+                  borderColor: active ? colors.primary : colors.border,
+                  opacity: pressed ? 0.75 : 1,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.filterText,
+                  { color: active ? "#FFFFFF" : colors.textMuted },
+                ]}
+              >
+                {option.label}
+              </Text>
+              {option.count > 0 ? (
+                <View
+                  style={[
+                    styles.filterCount,
+                    {
+                      backgroundColor: active
+                        ? "rgba(255,255,255,0.24)"
+                        : colors.surfaceAlt,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.filterCountText,
+                      { color: active ? "#FFFFFF" : colors.textMuted },
+                    ]}
+                  >
+                    {option.count}
+                  </Text>
+                </View>
+              ) : null}
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
       {error ? (
         <View
           style={[styles.errorBanner, { backgroundColor: colors.accentSoft }]}
@@ -438,6 +577,32 @@ export default function ChatsScreen() {
                 Try a different name or message.
               </Text>
             </View>
+          ) : filter === "archived" ? (
+            <EmptyState
+              icon="archive-outline"
+              title="Nothing archived"
+              message="Long-press a chat and choose Archive to keep it out of the way without deleting it."
+            />
+          ) : filter === "unread" ? (
+            <EmptyState
+              icon="checkmark-done-outline"
+              title="You're all caught up"
+              message="Chats with unread messages will show up here."
+            />
+          ) : filter === "favorites" ? (
+            <EmptyState
+              icon="star-outline"
+              title="No favourites yet"
+              message="Long-press a chat and add it to favourites to find it here."
+            />
+          ) : filter === "groups" ? (
+            <EmptyState
+              icon="people-outline"
+              title="No groups yet"
+              message="Bring a few people together and start a group from a new chat."
+              actionLabel="Start a chat"
+              onAction={() => router.push("/new-chat")}
+            />
           ) : (
             <EmptyState
               icon="chatbubbles-outline"
@@ -579,6 +744,36 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 10,
     fontSize: 14.5,
+  },
+  filters: {
+    paddingHorizontal: 18,
+    paddingBottom: 10,
+    gap: 7,
+  },
+  filterChip: {
+    minHeight: 34,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  filterText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  filterCount: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterCountText: {
+    fontSize: 10,
+    fontWeight: "800",
   },
   errorBanner: {
     marginHorizontal: 18,

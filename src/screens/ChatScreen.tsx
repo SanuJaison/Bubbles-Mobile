@@ -10,7 +10,6 @@ import {
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,11 +21,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { toggleBlockUserAPI, reportUserAPI } from "../api/auth";
 import {
   clearChatAPI,
+  createOrGetChatAPI,
   deleteChatAPI,
   deleteGroupAPI,
   getChatByIdAPI,
   leaveGroupAPI,
+  removeGroupMemberAPI,
   reportChatAPI,
+  setGroupAdminAPI,
+  updateGroupAPI,
+  updateGroupPermissionsAPI,
+  type GroupAvatarImage,
 } from "../api/chats";
 import { getErrorMessage } from "../api/client";
 import {
@@ -38,28 +43,32 @@ import {
   markMessagesAsReadAPI,
   sendMessageAPI,
   toggleMessageReactionAPI,
+  togglePinMessageAPI,
   type PickedFile,
 } from "../api/messages";
 import { ActionSheet, type ActionSheetOption } from "../components/ActionSheet";
 import { AddPeopleModal } from "../components/AddPeopleModal";
 import { Avatar } from "../components/Avatar";
+import { ChatWallpaper } from "../components/ChatWallpaper";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmojiPicker } from "../components/EmojiPicker";
 import { ForwardModal } from "../components/ForwardModal";
+import { GroupSettingsModal } from "../components/GroupSettingsModal";
 import { InfoDialog } from "../components/InfoDialog";
 import { MessageBubble } from "../components/MessageBubble";
 import { ProfileSheet } from "../components/ProfileSheet";
 import { ReportDialog } from "../components/ReportDialog";
 import { Screen } from "../components/Screen";
-import { CALLS_COMING_SOON } from "../config";
+import { WallpaperPicker } from "../components/WallpaperPicker";
 import { useAuth } from "../context/AuthContext";
+import { useCall } from "../context/CallContext";
 import { useChatPrefs } from "../context/ChatPrefsContext";
 import { useChats } from "../context/ChatsContext";
 import { useSocket } from "../context/SocketContext";
 import { useToast } from "../context/ToastContext";
 import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
 import { useTheme } from "../theme";
-import type { Chat, Conversation, Message } from "../types";
+import type { Chat, Conversation, Message, User } from "../types";
 import {
   formatChat,
   userIdOf,
@@ -89,6 +98,7 @@ export default function ChatScreen() {
   const { showToast } = useToast();
   const { user, updateUser } = useAuth();
   const { socket } = useSocket();
+  const { startCall } = useCall();
   const {
     conversations,
     refreshChats,
@@ -105,6 +115,9 @@ export default function ChatScreen() {
     toggleFavorite,
     togglePinned,
     toggleMuted,
+    wallpaperFor,
+    setWallpaper,
+    wallpapers,
   } = useChatPrefs();
   const params = useLocalSearchParams<{ chatId?: string }>();
   const chatId = String(firstParam(params.chatId) || "");
@@ -155,15 +168,24 @@ export default function ChatScreen() {
   const [deleteGroupConfirmOpen, setDeleteGroupConfirmOpen] = useState(false);
   const [deletingGroup, setDeletingGroup] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
+  const [wallpaperOpen, setWallpaperOpen] = useState(false);
+  const [groupSettingsOpen, setGroupSettingsOpen] = useState(false);
+  const [savingGroup, setSavingGroup] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<User | null>(null);
+  const [memberMenuOpen, setMemberMenuOpen] = useState(false);
+  const [memberActionBusy, setMemberActionBusy] = useState(false);
+  const [memberConfirm, setMemberConfirm] = useState<{
+    type: "admin" | "remove";
+    member: User;
+    makeAdmin?: boolean;
+  } | null>(null);
+  const [pinningId, setPinningId] = useState<string | null>(null);
+  const [pinnedIndex, setPinnedIndex] = useState(0);
 
   const listRef = useRef<FlatList<Message>>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingActive = useRef(false);
   const atBottom = useRef(true);
-  const rootHeight = useRef(0);
-  const hiddenHeight = useRef(0);
-  const keyboardHeight = useRef(0);
 
   const handleVoiceRecorded = useCallback(
     (file: PickedFile) => {
@@ -197,31 +219,17 @@ export default function ChatScreen() {
     }).catch(() => {});
   }, []);
 
-  // Android edge-to-edge builds do not always resize the window when the
-  // keyboard opens. We watch the real layout height and only add the part of
-  // the keyboard that is still overlapping the screen, so the composer is
-  // never hidden and never double-shifted.
+  // Expo apps run edge-to-edge on Android, so the window no longer resizes
+  // when the keyboard opens. KeyboardAvoidingView with `padding` handles that
+  // on every device, which is what the Expo keyboard guide recommends. We only
+  // track visibility here to trim the composer's bottom padding while typing.
   useEffect(() => {
-    const showSubscription = Keyboard.addListener("keyboardDidShow", (event) => {
-      const height = event.endCoordinates?.height || 0;
-      keyboardHeight.current = height;
+    const showSubscription = Keyboard.addListener("keyboardDidShow", () => {
       setKeyboardVisible(true);
-
-      if (Platform.OS !== "android") return;
-
-      setTimeout(() => {
-        const shrunk =
-          hiddenHeight.current > 0 && rootHeight.current > 0
-            ? Math.max(0, hiddenHeight.current - rootHeight.current)
-            : 0;
-        setAndroidKeyboardInset(Math.max(0, height - shrunk));
-      }, 90);
     });
 
     const hideSubscription = Keyboard.addListener("keyboardDidHide", () => {
-      keyboardHeight.current = 0;
       setKeyboardVisible(false);
-      setAndroidKeyboardInset(0);
     });
 
     return () => {
@@ -229,25 +237,6 @@ export default function ChatScreen() {
       hideSubscription.remove();
     };
   }, []);
-
-  const handleRootLayout = (height: number) => {
-    rootHeight.current = height;
-
-    if (!keyboardVisible) {
-      hiddenHeight.current = height;
-      return;
-    }
-
-    if (Platform.OS !== "android" || keyboardHeight.current <= 0) return;
-
-    const shrunk =
-      hiddenHeight.current > 0
-        ? Math.max(0, hiddenHeight.current - height)
-        : 0;
-    setAndroidKeyboardInset(
-      Math.max(0, keyboardHeight.current - shrunk)
-    );
-  };
 
   useEffect(() => {
     if (!keyboardVisible) return;
@@ -298,6 +287,33 @@ export default function ChatScreen() {
     (item) => item.isGroup
   );
 
+  const handleStartCall = (type: "audio" | "video") => {
+    if (isGroup) {
+      setInfoMessage(
+        "Group calls are coming soon. You can call one person from a direct chat."
+      );
+      return;
+    }
+
+    if (!otherUserId) {
+      setInfoMessage("This contact can't be called.");
+      return;
+    }
+
+    if (isBlocked) {
+      setInfoMessage("Unblock this contact before calling them.");
+      return;
+    }
+
+    startCall({
+      userId: otherUserId,
+      name: activeConversation?.title,
+      profilePicture: activeConversation?.avatar,
+      chatId,
+      type,
+    }).catch(() => {});
+  };
+
   const searchTerm = searchQuery.trim().toLowerCase();
   const visibleMessages = useMemo(() => {
     if (!searchTerm) return messages;
@@ -311,6 +327,33 @@ export default function ChatScreen() {
         .includes(searchTerm);
     });
   }, [messages, searchTerm]);
+
+  const pinnedMessages = useMemo(
+    () => messages.filter((message) => message.isPinned && !message.isDeleted),
+    [messages]
+  );
+
+  const activePinnedMessage =
+    pinnedMessages.length > 0
+      ? pinnedMessages[pinnedIndex % pinnedMessages.length]
+      : null;
+
+  const scrollToMessage = useCallback(
+    (messageId: string) => {
+      const index = visibleMessages.findIndex(
+        (message) => message._id === messageId
+      );
+
+      if (index < 0) return;
+
+      listRef.current?.scrollToIndex({
+        index,
+        animated: true,
+        viewPosition: 0.5,
+      });
+    },
+    [visibleMessages]
+  );
 
   const loadChat = useCallback(
     async (isRefresh = false) => {
@@ -499,8 +542,26 @@ export default function ChatScreen() {
       );
     };
 
-    const handleTyping = (payload: any) => {
+    const handlePinned = (payload: any) => {
       if (!isSameChat(payload?.chatId, chatId)) return;
+      const messageId = String(payload?.messageId || "");
+      if (!messageId) return;
+
+      setMessages((previous) =>
+        previous.map((message) =>
+          message._id === messageId
+            ? {
+                ...message,
+                isPinned: Boolean(payload?.isPinned),
+                pinnedAt: payload?.isPinned ? payload?.pinnedAt || null : null,
+                pinnedBy: payload?.isPinned ? payload?.pinnedBy || null : null,
+              }
+            : message
+        )
+      );
+    };
+
+    const handleTyping = (payload: any) => {      if (!isSameChat(payload?.chatId, chatId)) return;
       const name = String(payload?.userName || "").trim();
       if (!name || name === currentUserName) return;
 
@@ -535,6 +596,7 @@ export default function ChatScreen() {
     socket.on("messageDeleted", handleDeleted);
     socket.on("messageDeletedForUser", handleDeletedForUser);
     socket.on("messageReaction", handleReaction);
+    socket.on("messagePinned", handlePinned);
     socket.on("userTyping", handleTyping);
     socket.on("userStoppedTyping", handleStoppedTyping);
     socket.on("typingUsers", handleTypingUsers);
@@ -549,6 +611,7 @@ export default function ChatScreen() {
       socket.off("messageDeleted", handleDeleted);
       socket.off("messageDeletedForUser", handleDeletedForUser);
       socket.off("messageReaction", handleReaction);
+      socket.off("messagePinned", handlePinned);
       socket.off("userTyping", handleTyping);
       socket.off("userStoppedTyping", handleStoppedTyping);
       socket.off("typingUsers", handleTypingUsers);
@@ -877,6 +940,51 @@ export default function ChatScreen() {
     setMessageMenuOpen(false);
   };
 
+  const handleTogglePin = async () => {
+    if (!selectedMessage || pinningId) return;
+
+    const messageId = selectedMessage._id;
+
+    if (messageId.startsWith("local-")) {
+      showToast("Wait for this message to finish sending.", "info");
+      return;
+    }
+
+    setPinningId(messageId);
+
+    try {
+      const result = await togglePinMessageAPI(messageId);
+      const updated = result.data?.data;
+
+      setMessages((previous) =>
+        previous.map((message) =>
+          message._id === messageId
+            ? {
+                ...message,
+                isPinned: Boolean(updated?.isPinned),
+                pinnedAt: updated?.isPinned ? updated?.pinnedAt || null : null,
+                pinnedBy: updated?.isPinned ? updated?.pinnedBy || null : null,
+              }
+            : message
+        )
+      );
+
+      if (updated?.isPinned) setPinnedIndex(0);
+
+      showToast(
+        updated?.isPinned ? "Message pinned" : "Message unpinned",
+        "success"
+      );
+    } catch (error) {
+      showToast(
+        getErrorMessage(error, "Unable to update this pin."),
+        "error"
+      );
+    } finally {
+      setPinningId(null);
+    }
+  };
+
   const handleDeletePress = () => {
     if (!selectedMessage) return;
     setPendingDelete(selectedMessage);
@@ -1085,6 +1193,143 @@ export default function ChatScreen() {
     }
   };
 
+  const applyGroupChat = useCallback(
+    (rawChat: Chat) => {
+      setConversation(formatChat(rawChat, currentUserId, currentUserName));
+      upsertConversation(rawChat);
+    },
+    [currentUserId, currentUserName, upsertConversation]
+  );
+
+  const openGroupSettings = () => {
+    setProfileOpen(false);
+    setGroupSettingsOpen(true);
+  };
+
+  const handleSaveGroup = async (payload: {
+    name: string;
+    description: string;
+    avatar: GroupAvatarImage | null;
+  }) => {
+    if (savingGroup) return;
+    setSavingGroup(true);
+
+    try {
+      const result = await updateGroupAPI(chatId, payload);
+      const rawChat = result.data?.chat;
+
+      if (rawChat) applyGroupChat(rawChat);
+
+      setGroupSettingsOpen(false);
+      showToast("Group updated", "success");
+    } catch (error) {
+      showToast(
+        getErrorMessage(error, "Unable to update this group."),
+        "error"
+      );
+    } finally {
+      setSavingGroup(false);
+    }
+  };
+
+  const handlePermissionChange = async (
+    key: "sendMessages" | "addMembers" | "editInfo",
+    value: "all" | "admins"
+  ) => {
+    if (savingGroup) return;
+    setSavingGroup(true);
+
+    try {
+      const result = await updateGroupPermissionsAPI(chatId, { [key]: value });
+      const rawChat = result.data?.chat;
+
+      if (rawChat) applyGroupChat(rawChat);
+    } catch (error) {
+      showToast(
+        getErrorMessage(error, "Unable to update permissions."),
+        "error"
+      );
+    } finally {
+      setSavingGroup(false);
+    }
+  };
+
+  const handleMemberPress = (member: User) => {
+    setProfileOpen(false);
+    setSelectedMember(member);
+    setMemberMenuOpen(true);
+  };
+
+  const handleMessageMember = async (member: User) => {
+    const memberId = userIdOf(member);
+    if (!memberId) return;
+
+    setProfileOpen(false);
+
+    try {
+      const result = await createOrGetChatAPI(memberId);
+      const rawChat = result.data?.chat;
+
+      if (!rawChat?._id) {
+        throw new Error("Unable to open that chat.");
+      }
+
+      upsertConversation(rawChat);
+      router.push({
+        pathname: "/chat/[chatId]",
+        params: { chatId: rawChat._id },
+      });
+    } catch (error) {
+      showToast(
+        getErrorMessage(error, "Unable to open a chat with them."),
+        "error"
+      );
+    }
+  };
+
+  const confirmMemberAction = async () => {
+    if (!memberConfirm || memberActionBusy) return;
+
+    const memberId = userIdOf(memberConfirm.member);
+    if (!memberId) return;
+
+    const { type, member, makeAdmin } = memberConfirm;
+    setMemberActionBusy(true);
+
+    try {
+      const result =
+        type === "admin"
+          ? await setGroupAdminAPI(chatId, memberId, Boolean(makeAdmin))
+          : await removeGroupMemberAPI(chatId, memberId);
+
+      const rawChat = result.data?.chat;
+      if (rawChat) applyGroupChat(rawChat);
+
+      setMemberConfirm(null);
+      setSelectedMember(null);
+      showToast(
+        type === "admin"
+          ? makeAdmin
+            ? `${member.name} is now an admin`
+            : `${member.name} is no longer an admin`
+          : `${member.name} was removed from the group`,
+        "success"
+      );
+    } catch (error) {
+      showToast(
+        getErrorMessage(
+          error,
+          type === "admin"
+            ? "Unable to change that role."
+            : "Unable to remove that member."
+        ),
+        "error"
+      );
+    } finally {
+      setMemberActionBusy(false);
+    }
+  };
+
   const openSearchInChat = () => {
     setProfileOpen(false);
     setSearchOpen(true);
@@ -1101,6 +1346,52 @@ export default function ChatScreen() {
     setAddPeopleMode(isGroup ? "members" : "group");
     setAddPeopleOpen(true);
   };
+
+  const memberOptions: ActionSheetOption[] = (() => {
+    const member = selectedMember;
+    if (!member) return [];
+
+    const memberId = userIdOf(member);
+    const memberIsCreator =
+      String(activeConversation?.groupCreatedBy || "") === memberId;
+    const memberIsAdmin =
+      memberIsCreator ||
+      (activeConversation?.groupAdmins || []).some(
+        (adminId) => String(adminId) === memberId
+      );
+    const isMe = memberId === currentUserId;
+
+    const options: ActionSheetOption[] = [];
+
+    if (!isMe) {
+      options.push({
+        label: `Message ${member.name}`,
+        icon: "chatbubble-outline",
+        onPress: () => handleMessageMember(member),
+      });
+    }
+
+    if (isAdmin && !isMe && !memberIsCreator) {
+      options.push({
+        label: memberIsAdmin ? "Dismiss as admin" : "Make admin",
+        icon: "shield-checkmark-outline",
+        onPress: () =>
+          setMemberConfirm({
+            type: "admin",
+            member,
+            makeAdmin: !memberIsAdmin,
+          }),
+      });
+      options.push({
+        label: "Remove from group",
+        icon: "person-remove-outline",
+        destructive: true,
+        onPress: () => setMemberConfirm({ type: "remove", member }),
+      });
+    }
+
+    return options;
+  })();
 
   const messageOptions: ActionSheetOption[] = (() => {
     if (!selectedMessage) return [];
@@ -1141,6 +1432,22 @@ export default function ChatScreen() {
     }
 
     const isLocalMessage = selectedMessage._id.startsWith("local-");
+
+    if (!selectedMessage.isDeleted && !isLocalMessage) {
+      const pinnedById = userIdOf(selectedMessage.pinnedBy);
+      const canTogglePin =
+        !selectedMessage.isPinned ||
+        !pinnedById ||
+        pinnedById === currentUserId;
+
+      if (canTogglePin) {
+        options.push({
+          label: selectedMessage.isPinned ? "Unpin message" : "Pin message",
+          icon: selectedMessage.isPinned ? "pin-outline" : "pin",
+          onPress: handleTogglePin,
+        });
+      }
+    }
 
     options.push({
       label: isLocalMessage
@@ -1232,6 +1539,12 @@ export default function ChatScreen() {
       onPress: () => setBlockConfirmOpen(true),
     });
   }
+
+  headerOptions.push({
+    label: "Chat wallpaper",
+    icon: "color-palette-outline",
+    onPress: () => setWallpaperOpen(true),
+  });
 
   headerOptions.push({
     label: "Clear chat",
@@ -1378,16 +1691,10 @@ export default function ChatScreen() {
 
   return (
     <Screen>
-      <View
-        style={[styles.flex, { paddingBottom: androidKeyboardInset }]}
-        onLayout={(event) =>
-          handleRootLayout(event.nativeEvent.layout.height)
-        }
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior="padding"
       >
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-        >
         <View
           style={[
             styles.header,
@@ -1447,8 +1754,8 @@ export default function ChatScreen() {
           </Pressable>
 
           <Pressable
-            onPress={() => setInfoMessage(CALLS_COMING_SOON)}
-            accessibilityLabel="Voice call coming soon"
+            onPress={() => handleStartCall("audio")}
+            accessibilityLabel="Start voice call"
             style={({ pressed }) => [
               styles.headerButton,
               { opacity: pressed ? 0.6 : 0.55 },
@@ -1458,8 +1765,8 @@ export default function ChatScreen() {
           </Pressable>
 
           <Pressable
-            onPress={() => setInfoMessage(CALLS_COMING_SOON)}
-            accessibilityLabel="Video call coming soon"
+            onPress={() => handleStartCall("video")}
+            accessibilityLabel="Start video call"
             style={({ pressed }) => [
               styles.headerButton,
               { opacity: pressed ? 0.6 : 0.55 },
@@ -1536,12 +1843,69 @@ export default function ChatScreen() {
           </View>
         ) : null}
 
-        <FlatList
-          ref={listRef}
-          data={visibleMessages}
-          keyExtractor={(item) => item._id}
-          renderItem={renderMessage}
-          contentContainerStyle={styles.messageList}
+        {activePinnedMessage ? (
+          <Pressable
+            onPress={() => {
+              scrollToMessage(activePinnedMessage._id);
+
+              if (pinnedMessages.length > 1) {
+                setPinnedIndex(
+                  (previous) => (previous + 1) % pinnedMessages.length
+                );
+              }
+            }}
+            style={({ pressed }) => [
+              styles.pinnedBanner,
+              {
+                backgroundColor: colors.surface,
+                borderBottomColor: colors.border,
+                opacity: pressed ? 0.75 : 1,
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.pinnedIcon,
+                { backgroundColor: colors.primarySoft },
+              ]}
+            >
+              <Ionicons name="pin" size={15} color={colors.primary} />
+            </View>
+            <View style={styles.pinnedBody}>
+              <Text style={[styles.pinnedLabel, { color: colors.primary }]}>
+                Pinned message
+              </Text>
+              <Text
+                numberOfLines={1}
+                style={[styles.pinnedText, { color: colors.textMuted }]}
+              >
+                {messagePreview(activePinnedMessage)}
+              </Text>
+            </View>
+            {pinnedMessages.length > 1 ? (
+              <Text style={[styles.pinnedCount, { color: colors.textSoft }]}>
+                {(pinnedIndex % pinnedMessages.length) + 1} of{" "}
+                {pinnedMessages.length}
+              </Text>
+            ) : (
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color={colors.textSoft}
+              />
+            )}
+          </Pressable>
+        ) : null}
+
+        <View style={styles.messagesWrap}>
+          <ChatWallpaper value={wallpaperFor(chatId)} />
+          <FlatList
+            ref={listRef}
+            style={styles.flex}
+            data={visibleMessages}
+            keyExtractor={(item) => item._id}
+            renderItem={renderMessage}
+            contentContainerStyle={styles.messageList}
           keyboardShouldPersistTaps="handled"
           onScroll={({ nativeEvent }) => {
             const distance =
@@ -1551,6 +1915,12 @@ export default function ChatScreen() {
             atBottom.current = distance < 140;
           }}
           scrollEventThrottle={120}
+          onScrollToIndexFailed={({ index }) => {
+            listRef.current?.scrollToOffset({
+              offset: Math.max(0, index * 64),
+              animated: true,
+            });
+          }}
           refreshing={refreshing}
           onRefresh={() => loadChat(true)}
           ListEmptyComponent={
@@ -1619,6 +1989,7 @@ export default function ChatScreen() {
             ) : undefined
           }
         />
+        </View>
 
         <View
           style={[
@@ -1910,7 +2281,18 @@ export default function ChatScreen() {
           </View>
         </View>
         </KeyboardAvoidingView>
-      </View>
+
+      <WallpaperPicker
+        visible={wallpaperOpen}
+        title="Chat wallpaper"
+        value={wallpaperFor(chatId)}
+        allowReset={Boolean(wallpapers[chatId])}
+        onClose={() => setWallpaperOpen(false)}
+        onSelect={(next) => {
+          setWallpaper(chatId, next);
+          showToast("Wallpaper updated", "success");
+        }}
+      />
 
       <ActionSheet
         visible={messageMenuOpen}
@@ -1943,6 +2325,13 @@ export default function ChatScreen() {
         title="Chat options"
         options={headerOptions}
         onClose={() => setHeaderMenuOpen(false)}
+      />
+
+      <ActionSheet
+        visible={memberMenuOpen}
+        title={selectedMember?.name}
+        options={memberOptions}
+        onClose={() => setMemberMenuOpen(false)}
       />
 
       <ForwardModal
@@ -2033,8 +2422,61 @@ export default function ChatScreen() {
           setProfileOpen(false);
           setDeleteGroupConfirmOpen(true);
         }}
-        onVoiceCall={() => setInfoMessage(CALLS_COMING_SOON)}
-        onVideoCall={() => setInfoMessage(CALLS_COMING_SOON)}
+        onEditGroup={openGroupSettings}
+        onMemberPress={handleMemberPress}
+        onVoiceCall={() => handleStartCall("audio")}
+        onVideoCall={() => handleStartCall("video")}
+      />
+
+      <GroupSettingsModal
+        key={
+          groupSettingsOpen
+            ? `group-${chatId}-${activeConversation?.title || ""}-${
+                activeConversation?.groupDescription || ""
+              }`
+            : "group-closed"
+        }
+        visible={groupSettingsOpen}
+        conversation={activeConversation}
+        isAdmin={isAdmin}
+        canEditInfo={
+          isGroup &&
+          (isAdmin ||
+            activeConversation?.groupPermissions?.editInfo === "all")
+        }
+        busy={savingGroup}
+        onClose={() => setGroupSettingsOpen(false)}
+        onSave={handleSaveGroup}
+        onPermissionChange={handlePermissionChange}
+      />
+
+      <ConfirmDialog
+        visible={Boolean(memberConfirm)}
+        title={
+          memberConfirm?.type === "remove"
+            ? `Remove ${memberConfirm.member.name}?`
+            : memberConfirm?.makeAdmin
+              ? `Make ${memberConfirm?.member.name} an admin?`
+              : `Dismiss ${memberConfirm?.member.name} as admin?`
+        }
+        message={
+          memberConfirm?.type === "remove"
+            ? "They will be removed from this group and can only rejoin if someone adds them back."
+            : memberConfirm?.makeAdmin
+              ? "Admins can remove members, change group settings and manage roles."
+              : "They will stay in the group with member privileges only."
+        }
+        confirmLabel={
+          memberConfirm?.type === "remove"
+            ? "Remove"
+            : memberConfirm?.makeAdmin
+              ? "Make admin"
+              : "Dismiss admin"
+        }
+        destructive={memberConfirm?.type === "remove"}
+        loading={memberActionBusy}
+        onCancel={() => setMemberConfirm(null)}
+        onConfirm={confirmMemberAction}
       />
 
       <AddPeopleModal
@@ -2187,6 +2629,44 @@ const styles = StyleSheet.create({
   },
   retry: {
     fontSize: 13,
+    fontWeight: "700",
+  },
+  messagesWrap: {
+    flex: 1,
+    overflow: "hidden",
+  },
+  pinnedBanner: {
+    minHeight: 52,
+    borderBottomWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  pinnedIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pinnedBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  pinnedLabel: {
+    fontSize: 10.5,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  pinnedText: {
+    marginTop: 2,
+    fontSize: 12.5,
+  },
+  pinnedCount: {
+    fontSize: 10.5,
     fontWeight: "700",
   },
   messageList: {

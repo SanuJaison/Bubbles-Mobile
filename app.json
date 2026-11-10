@@ -22,7 +22,13 @@
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "android.permission.INTERNET",
-        "android.permission.READ_MEDIA_IMAGES"
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO"
       ]
     },
     "web": {
@@ -54,7 +60,14 @@
           "enableBackgroundPlayback": false
         }
       ],
-      "expo-video"
+      "expo-video",
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "Bubbles needs your camera so you can make video calls.",
+          "microphonePermission": "Bubbles needs your microphone so you can make voice and video calls."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

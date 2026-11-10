@@ -36,6 +36,8 @@ type ProfileSheetProps = {
   onAddPeople?: () => void;
   onLeaveGroup?: () => void;
   onDeleteGroup?: () => void;
+  onEditGroup?: () => void;
+  onMemberPress?: (member: User) => void;
   onVoiceCall?: () => void;
   onVideoCall?: () => void;
 };
@@ -183,6 +185,8 @@ export const ProfileSheet = ({
   onAddPeople,
   onLeaveGroup,
   onDeleteGroup,
+  onEditGroup,
+  onMemberPress,
   onVoiceCall,
   onVideoCall,
 }: ProfileSheetProps) => {
@@ -286,6 +290,13 @@ export const ProfileSheet = ({
     !isGroup ||
     conversation?.groupPermissions?.addMembers !== "admins" ||
     isAdmin;
+
+  const canEditInfo =
+    !isGroup ||
+    isAdmin ||
+    conversation?.groupPermissions?.editInfo === "all";
+
+  const canManageMembers = Boolean(isGroup && isAdmin && onMemberPress);
 
   if (!conversation) {
     return null;
@@ -630,9 +641,25 @@ export const ProfileSheet = ({
                     (conversation.groupAdmins || []).some(
                       (adminId) => String(adminId) === memberId
                     );
+                  const manageable =
+                    canManageMembers &&
+                    memberId !== currentUserId &&
+                    !creator;
 
                   return (
-                    <View key={memberId} style={styles.memberRow}>
+                    <Pressable
+                      key={memberId}
+                      onPress={
+                        manageable
+                          ? () => onMemberPress?.(participant)
+                          : undefined
+                      }
+                      disabled={!manageable}
+                      style={({ pressed }) => [
+                        styles.memberRow,
+                        { opacity: pressed && manageable ? 0.7 : 1 },
+                      ]}
+                    >
                       <Avatar
                         name={participant.name}
                         uri={
@@ -680,13 +707,33 @@ export const ProfileSheet = ({
                           </Text>
                         </View>
                       ) : null}
-                    </View>
+                      {manageable ? (
+                        <Ionicons
+                          name="ellipsis-horizontal"
+                          size={17}
+                          color={colors.textSoft}
+                        />
+                      ) : null}
+                    </Pressable>
                   );
                 })}
               </View>
             ) : null}
 
             <View style={styles.actions}>
+              {isGroup && canEditInfo ? (
+                <PanelRow
+                  icon="settings-outline"
+                  label={isAdmin ? "Group settings" : "Edit group info"}
+                  hint={
+                    isAdmin
+                      ? "Name, photo, description and permissions"
+                      : "Change the group name, photo and description"
+                  }
+                  onPress={onEditGroup}
+                />
+              ) : null}
+
               <PanelRow
                 icon={isMuted ? "notifications-off-outline" : "notifications-outline"}
                 label={

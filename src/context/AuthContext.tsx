@@ -25,6 +25,7 @@ type AuthContextValue = {
   login: (token: string, user: User) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (user: User) => Promise<void>;
+  updateToken: (token: string) => Promise<void>;
   refreshProfile: () => Promise<User | null>;
 };
 
@@ -116,6 +117,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await saveStoredUser(nextUser);
   }, []);
 
+  const updateToken = useCallback(
+    async (nextToken: string) => {
+      setApiToken(nextToken);
+      setToken(nextToken);
+
+      if (user) {
+        await saveStoredAuth(nextToken, user);
+      }
+    },
+    [user]
+  );
+
   const refreshProfile = useCallback(async () => {
     try {
       const response = await getProfileAPI();
@@ -139,9 +152,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       login,
       logout,
       updateUser,
+      updateToken,
       refreshProfile,
     }),
-    [user, token, loading, login, logout, updateUser, refreshProfile]
+    [user, token, loading, login, logout, updateUser, updateToken, refreshProfile]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

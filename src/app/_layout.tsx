@@ -3,7 +3,9 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { CallOverlay } from "../components/CallOverlay";
 import { AuthProvider, useAuth } from "../context/AuthContext";
+import { CallProvider } from "../context/CallContext";
 import { ChatPrefsProvider } from "../context/ChatPrefsContext";
 import { ChatsProvider } from "../context/ChatsContext";
 import { SocketProvider } from "../context/SocketContext";
@@ -63,9 +65,12 @@ export default function RootLayout() {
             <SocketProvider>
               <ChatsProvider>
                 <ToastProvider>
-                  <ThemedStatusBar />
-                  <SplashController />
-                  <RootNavigator />
+                  <CallProvider>
+                    <ThemedStatusBar />
+                    <SplashController />
+                    <RootNavigator />
+                    <CallOverlay />
+                  </CallProvider>
                 </ToastProvider>
               </ChatsProvider>
             </SocketProvider>
