@@ -337,6 +337,16 @@ export const MessageBubble = ({
         ) : null}
 
         <View style={styles.meta}>
+          {message.isPinned ? (
+            <Ionicons
+              name="pin"
+              size={11}
+              color={
+                isMine ? "rgba(255,255,255,0.66)" : colors.textSoft
+              }
+            />
+          ) : null}
+
           <Text
             style={[
               styles.metaText,

@@ -55,5 +55,5 @@ jobs:
           else
             gh release create "$TAG" Bubbles.apk \
               --title "Bubbles Android $TAG" \
-              --notes "Bubbles for Android. Install the APK on your phone. Calls are coming soon on Android."
+              --notes "Bubbles for Android. Install the APK on your phone. Voice and video calls are included."
           fi

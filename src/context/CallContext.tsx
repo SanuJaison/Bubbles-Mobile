@@ -682,6 +682,14 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
       });
 
       Vibration.vibrate([0, 700, 900], true);
+
+      ringTimeoutRef.current = setTimeout(() => {
+        if (callRef.current?.id !== callId) return;
+
+        showToast("Missed call", "info");
+        finalize("missed");
+        cleanup();
+      }, RING_TIMEOUT_MS);
     };
 
     const handleAccepted = async ({ callId }: any) => {
