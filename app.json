@@ -3,7 +3,7 @@
     "name": "Bubbles",
     "slug": "bubbles",
     "scheme": "bubbles",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -14,7 +14,7 @@
     },
     "android": {
       "package": "com.bubbles.chat",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "backgroundColor": "#090610",
         "foregroundImage": "./assets/android-icon-foreground.png"
@@ -79,7 +79,8 @@
             "extraProguardRules": "-keep class org.webrtc.** { *; }\n-dontwarn org.webrtc.**"
           }
         }
-      ]
+      ],
+      "./plugins/withAndroidAbis"
     ],
     "experiments": {
       "typedRoutes": true

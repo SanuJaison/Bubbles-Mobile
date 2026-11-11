@@ -19,6 +19,9 @@
     "production": {
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "BUBBLES_ANDROID_ABIS": "arm64-v8a"
       }
     }
   },
