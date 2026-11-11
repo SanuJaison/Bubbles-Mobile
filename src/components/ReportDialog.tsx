@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Modal,
   Pressable,
   ScrollView,
@@ -13,6 +12,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../theme";
+import { KeyboardAwareView } from "./KeyboardAwareView";
 
 export const REPORT_REASONS = [
   { id: "spam", label: "Spam or scam" },
@@ -60,10 +60,7 @@ export const ReportDialog = ({
         if (!busy) onClose();
       }}
     >
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior="padding"
-      >
+      <KeyboardAwareView style={styles.flex}>
         <Pressable
           style={[styles.overlay, { backgroundColor: colors.overlay }]}
           onPress={() => {
@@ -207,7 +204,7 @@ export const ReportDialog = ({
             </View>
           </Pressable>
         </Pressable>
-      </KeyboardAvoidingView>
+      </KeyboardAwareView>
     </Modal>
   );
 };

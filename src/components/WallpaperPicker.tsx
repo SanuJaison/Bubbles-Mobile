@@ -21,14 +21,18 @@ import {
 } from "../constants/wallpapers";
 import { useTheme } from "../theme";
 
+export type WallpaperScope = "chat" | "all";
+
 type WallpaperPickerProps = {
   visible: boolean;
   title?: string;
   value?: string;
   /** Shows the reset row when the chat has its own wallpaper. */
   allowReset?: boolean;
+  /** Lets the user choose between this chat and every chat. */
+  allowApplyToAll?: boolean;
   onClose: () => void;
-  onSelect: (value: string) => void;
+  onSelect: (value: string, scope: WallpaperScope) => void;
 };
 
 /**
@@ -55,12 +59,21 @@ export const WallpaperPicker = ({
   title = "Chat wallpaper",
   value,
   allowReset = false,
+  allowApplyToAll = false,
   onClose,
   onSelect,
 }: WallpaperPickerProps) => {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState(false);
+  const [scope, setScope] = useState<WallpaperScope>("chat");
+
+  // Reset the choice each time the sheet is dismissed so it always opens on
+  // "this chat only".
+  const close = () => {
+    setScope("chat");
+    onClose();
+  };
 
   const pickPhoto = async () => {
     if (busy) return;
@@ -86,8 +99,8 @@ export const WallpaperPicker = ({
         // session instead of silently doing nothing.
       }
 
-      onSelect(stored);
-      onClose();
+      onSelect(stored, scope);
+      close();
     } finally {
       setBusy(false);
     }
@@ -100,11 +113,11 @@ export const WallpaperPicker = ({
       visible={visible}
       transparent
       animationType="slide"
-      onRequestClose={onClose}
+      onRequestClose={close}
     >
       <Pressable
         style={[styles.overlay, { backgroundColor: colors.overlay }]}
-        onPress={onClose}
+        onPress={close}
       >
         <Pressable
           onPress={(event) => event.stopPropagation()}
@@ -119,10 +132,46 @@ export const WallpaperPicker = ({
         >
           <View style={styles.head}>
             <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
-            <Pressable onPress={onClose} hitSlop={10}>
+            <Pressable onPress={close} hitSlop={10}>
               <Ionicons name="close" size={22} color={colors.textMuted} />
             </Pressable>
           </View>
+
+          {allowApplyToAll ? (
+            <View
+              style={[
+                styles.scopeRow,
+                {
+                  backgroundColor: colors.surfaceAlt,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              {(["chat", "all"] as const).map((option) => {
+                const active = scope === option;
+
+                return (
+                  <Pressable
+                    key={option}
+                    onPress={() => setScope(option)}
+                    style={[
+                      styles.scopeOption,
+                      active && { backgroundColor: colors.primary },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.scopeText,
+                        { color: active ? "#FFFFFF" : colors.textMuted },
+                      ]}
+                    >
+                      {option === "chat" ? "This chat only" : "All chats"}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
 
           <ScrollView
             showsVerticalScrollIndicator={false}
@@ -136,8 +185,8 @@ export const WallpaperPicker = ({
                   <Pressable
                     key={preset.id}
                     onPress={() => {
-                      onSelect(presetValue(preset.id));
-                      onClose();
+                      onSelect(presetValue(preset.id), scope);
+                      close();
                     }}
                     style={({ pressed }) => [
                       styles.tile,
@@ -218,8 +267,8 @@ export const WallpaperPicker = ({
             {allowReset ? (
               <Pressable
                 onPress={() => {
-                  onSelect("");
-                  onClose();
+                  onSelect("", scope);
+                  close();
                 }}
                 style={({ pressed }) => [
                   styles.actionRow,
@@ -264,6 +313,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingBottom: 12,
+  },
+  scopeRow: {
+    flexDirection: "row",
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 3,
+    gap: 3,
+    marginBottom: 12,
+  },
+  scopeOption: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  scopeText: {
+    fontSize: 12.5,
+    fontWeight: "700",
   },
   title: {
     fontSize: 17,

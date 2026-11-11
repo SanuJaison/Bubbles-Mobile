@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   FlatList,
   Keyboard,
-  KeyboardAvoidingView,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -55,6 +54,7 @@ import { EmojiPicker } from "../components/EmojiPicker";
 import { ForwardModal } from "../components/ForwardModal";
 import { GroupSettingsModal } from "../components/GroupSettingsModal";
 import { InfoDialog } from "../components/InfoDialog";
+import { KeyboardAwareView } from "../components/KeyboardAwareView";
 import { MessageInfoDialog } from "../components/MessageInfoDialog";
 import { MessageBubble } from "../components/MessageBubble";
 import { ProfileSheet } from "../components/ProfileSheet";
@@ -118,6 +118,7 @@ export default function ChatScreen() {
     toggleMuted,
     wallpaperFor,
     setWallpaper,
+    setWallpaperForAll,
     wallpapers,
   } = useChatPrefs();
   const params = useLocalSearchParams<{ chatId?: string }>();
@@ -222,10 +223,10 @@ export default function ChatScreen() {
     }).catch(() => {});
   }, []);
 
-  // Expo apps run edge-to-edge on Android, so the window no longer resizes
-  // when the keyboard opens. KeyboardAvoidingView with `padding` handles that
-  // on every device, which is what the Expo keyboard guide recommends. We only
-  // track visibility here to trim the composer's bottom padding while typing.
+  // Expo apps run edge-to-edge on Android, so the window does not resize when
+  // the keyboard opens. KeyboardAwareView pads the screen by the measured
+  // overlap; we only track visibility here to trim the composer's bottom
+  // padding while typing.
   useEffect(() => {
     const showSubscription = Keyboard.addListener("keyboardDidShow", () => {
       setKeyboardVisible(true);
@@ -1705,10 +1706,7 @@ export default function ChatScreen() {
 
   return (
     <Screen>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior="padding"
-      >
+      <KeyboardAwareView style={styles.flex}>
         <View
           style={[
             styles.header,
@@ -2101,6 +2099,7 @@ export default function ChatScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
+              style={styles.attachmentRowScroll}
               contentContainerStyle={styles.attachmentRow}
             >
               {pickedFiles.map((file, index) => (
@@ -2316,15 +2315,22 @@ export default function ChatScreen() {
             )}
           </View>
         </View>
-        </KeyboardAvoidingView>
+      </KeyboardAwareView>
 
       <WallpaperPicker
         visible={wallpaperOpen}
         title="Chat wallpaper"
         value={wallpaperFor(chatId)}
         allowReset={Boolean(wallpapers[chatId])}
+        allowApplyToAll
         onClose={() => setWallpaperOpen(false)}
-        onSelect={(next) => {
+        onSelect={(next, scope) => {
+          if (scope === "all") {
+            setWallpaperForAll(next);
+            showToast("Wallpaper applied to all chats", "success");
+            return;
+          }
+
           setWallpaper(chatId, next);
           showToast("Wallpaper updated", "success");
         }}
@@ -2878,6 +2884,11 @@ const styles = StyleSheet.create({
   attachmentRow: {
     gap: 7,
     paddingBottom: 8,
+    alignItems: "center",
+  },
+  attachmentRowScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
   },
   attachmentChip: {
     maxWidth: 200,

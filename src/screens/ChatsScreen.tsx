@@ -458,6 +458,7 @@ export default function ChatsScreen() {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={styles.filtersScroll}
         contentContainerStyle={styles.filters}
       >
         {filterOptions.map((option) => {
@@ -745,10 +746,15 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14.5,
   },
+  filtersScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
   filters: {
     paddingHorizontal: 18,
     paddingBottom: 10,
     gap: 7,
+    alignItems: "center",
   },
   filterChip: {
     minHeight: 34,

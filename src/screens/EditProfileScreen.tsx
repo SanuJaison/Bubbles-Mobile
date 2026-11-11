@@ -3,7 +3,6 @@ import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
-  KeyboardAvoidingView,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,6 +18,7 @@ import { TextField } from "../components/TextField";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useTheme } from "../theme";
+import { KeyboardAwareView } from "../components/KeyboardAwareView";
 
 const USERNAME_PATTERN = /^[a-z0-9._]{3,32}$/;
 
@@ -112,10 +112,7 @@ export default function EditProfileScreen() {
 
   return (
     <Screen>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior="padding"
-      >
+      <KeyboardAwareView style={styles.flex}>
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
@@ -225,7 +222,7 @@ export default function EditProfileScreen() {
             />
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareView>
     </Screen>
   );
 }

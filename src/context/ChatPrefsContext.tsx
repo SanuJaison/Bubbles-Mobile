@@ -81,6 +81,7 @@ type ChatPrefsContextValue = ChatPrefs & {
   /** The wallpaper this chat should paint, falling back to the default. */
   wallpaperFor: (chatId?: string | null) => string;
   setWallpaper: (chatId: string | undefined | null, value: string) => void;
+  setWallpaperForAll: (value: string) => void;
   setDefaultWallpaper: (value: string) => void;
 };
 
@@ -184,6 +185,15 @@ export const ChatPrefsProvider = ({ children }: { children: ReactNode }) => {
     }));
   }, []);
 
+  /** Applies one wallpaper to every chat and drops per-chat overrides. */
+  const setWallpaperForAll = useCallback((value: string) => {
+    setPrefs((previous) => ({
+      ...previous,
+      wallpapers: {},
+      defaultWallpaper: value || DEFAULT_WALLPAPER_VALUE,
+    }));
+  }, []);
+
   const value = useMemo<ChatPrefsContextValue>(() => {
     const includes = (list: string[], chatId?: string | null) =>
       Boolean(chatId) && list.includes(String(chatId));
@@ -203,9 +213,17 @@ export const ChatPrefsProvider = ({ children }: { children: ReactNode }) => {
         (chatId ? prefs.wallpapers[String(chatId)] : "") ||
         prefs.defaultWallpaper,
       setWallpaper,
+      setWallpaperForAll,
       setDefaultWallpaper,
     };
-  }, [prefs, ready, toggle, setWallpaper, setDefaultWallpaper]);
+  }, [
+    prefs,
+    ready,
+    toggle,
+    setWallpaper,
+    setWallpaperForAll,
+    setDefaultWallpaper,
+  ]);
 
   return (
     <ChatPrefsContext.Provider value={value}>

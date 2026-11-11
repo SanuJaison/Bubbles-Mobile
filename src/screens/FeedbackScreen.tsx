@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
-  KeyboardAvoidingView,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,6 +17,7 @@ import { TextField } from "../components/TextField";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useTheme } from "../theme";
+import { KeyboardAwareView } from "../components/KeyboardAwareView";
 
 type Category = "suggestion" | "bug" | "feature" | "other";
 
@@ -77,10 +77,7 @@ export default function FeedbackScreen() {
 
   return (
     <Screen>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior="padding"
-      >
+      <KeyboardAwareView style={styles.flex}>
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
@@ -231,7 +228,7 @@ export default function FeedbackScreen() {
             </Text>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareView>
 
       <InfoDialog
         visible={successOpen}

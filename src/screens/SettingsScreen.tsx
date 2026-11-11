@@ -3,7 +3,6 @@ import { router } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Modal,
   Pressable,
   ScrollView,
@@ -31,6 +30,7 @@ import { useToast } from "../context/ToastContext";
 import { useTheme } from "../theme";
 import type { User } from "../types";
 import { userIdOf } from "../utils/chat";
+import { KeyboardAwareView } from "../components/KeyboardAwareView";
 
 type VisibilityField = "profilePhotoVisibility" | "lastSeenVisibility";
 
@@ -530,10 +530,7 @@ const PasswordModal = ({
       animationType="fade"
       onRequestClose={close}
     >
-      <KeyboardAvoidingView
-        behavior="padding"
-        style={styles.passwordOverlay}
-      >
+      <KeyboardAwareView style={styles.passwordOverlay}>
         <View
           style={[
             styles.passwordCard,
@@ -617,7 +614,7 @@ const PasswordModal = ({
             </Pressable>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardAwareView>
     </Modal>
   );
 };

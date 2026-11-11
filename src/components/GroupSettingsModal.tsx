@@ -3,7 +3,6 @@ import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Modal,
   Pressable,
   ScrollView,
@@ -19,6 +18,7 @@ import { useTheme } from "../theme";
 import type { Chat, Conversation } from "../types";
 import { Avatar } from "./Avatar";
 import { useToast } from "../context/ToastContext";
+import { KeyboardAwareView } from "./KeyboardAwareView";
 
 type PermissionKey = "sendMessages" | "addMembers" | "editInfo";
 type PermissionValue = "all" | "admins";
@@ -152,7 +152,7 @@ export const GroupSettingsModal = ({
         if (!busy) onClose();
       }}
     >
-      <KeyboardAvoidingView style={styles.flex} behavior="padding">
+      <KeyboardAwareView style={styles.flex}>
         <Pressable
           style={[styles.overlay, { backgroundColor: colors.overlay }]}
           onPress={() => {
@@ -409,7 +409,7 @@ export const GroupSettingsModal = ({
             ) : null}
           </Pressable>
         </Pressable>
-      </KeyboardAvoidingView>
+      </KeyboardAwareView>
     </Modal>
   );
 };

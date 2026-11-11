@@ -1,7 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { ReactNode } from "react";
 import {
-  KeyboardAvoidingView,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +10,7 @@ import {
 import { useTheme } from "../theme";
 import { BrandMark } from "./BrandMark";
 import { Screen } from "./Screen";
+import { KeyboardAwareView } from "./KeyboardAwareView";
 
 type AuthShellProps = {
   title: string;
@@ -33,10 +33,7 @@ export const AuthShell = ({
 
   return (
     <Screen edges={["top", "left", "right", "bottom"]}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior="padding"
-      >
+      <KeyboardAwareView style={styles.flex}>
         <ScrollView
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
@@ -72,7 +69,7 @@ export const AuthShell = ({
           <View style={styles.form}>{children}</View>
           {footer ? <View style={styles.footer}>{footer}</View> : null}
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareView>
     </Screen>
   );
 };

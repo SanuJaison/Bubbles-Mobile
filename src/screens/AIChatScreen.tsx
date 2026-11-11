@@ -8,7 +8,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  KeyboardAvoidingView,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -34,6 +33,7 @@ import type { AIHistoryAttachment, AIHistoryMessage } from "../types";
 import { cleanAIText, makeLocalId } from "../utils/ai";
 import { formatClockTime, formatDuration } from "../utils/format";
 import { openExternalUrl } from "../utils/links";
+import { KeyboardAwareView } from "../components/KeyboardAwareView";
 import {
   clearAIHistory,
   loadAIHistory,
@@ -727,10 +727,7 @@ export default function AIChatScreen() {
 
   return (
     <Screen>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior="padding"
-      >
+      <KeyboardAwareView style={styles.flex}>
         <View
           style={[
             styles.header,
@@ -930,6 +927,7 @@ export default function AIChatScreen() {
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
+                  style={styles.attachmentStripScroll}
                   contentContainerStyle={styles.attachmentStrip}
                 >
                   {attachments.map((file, index) => (
@@ -1057,7 +1055,7 @@ export default function AIChatScreen() {
             </>
           )}
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardAwareView>
 
       <ActionSheet
         visible={messageMenuOpen}
@@ -1360,6 +1358,11 @@ const styles = StyleSheet.create({
     gap: 7,
     paddingBottom: 8,
     paddingRight: 4,
+    alignItems: "center",
+  },
+  attachmentStripScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
   },
   attachmentChip: {
     flexDirection: "row",
