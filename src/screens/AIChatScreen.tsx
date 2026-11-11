@@ -1,23 +1,25 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
+import * as DocumentPicker from "expo-document-picker";
 import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
 import * as Speech from "expo-speech";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
-  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { chatWithAIAPI } from "../api/ai";
+import { chatWithAIFilesAPI, transcribeAudioAPI } from "../api/ai";
 import { getErrorMessage } from "../api/client";
-import { sendMessageAPI } from "../api/messages";
+import { sendMessageAPI, type PickedFile } from "../api/messages";
 import { ActionSheet, type ActionSheetOption } from "../components/ActionSheet";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ForwardModal } from "../components/ForwardModal";
@@ -26,10 +28,11 @@ import { Screen } from "../components/Screen";
 import { useAuth } from "../context/AuthContext";
 import { useChats } from "../context/ChatsContext";
 import { useToast } from "../context/ToastContext";
+import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
 import { useTheme } from "../theme";
-import type { AIHistoryMessage } from "../types";
+import type { AIHistoryAttachment, AIHistoryMessage } from "../types";
 import { cleanAIText, makeLocalId } from "../utils/ai";
-import { formatClockTime } from "../utils/format";
+import { formatClockTime, formatDuration } from "../utils/format";
 import { openExternalUrl } from "../utils/links";
 import {
   clearAIHistory,
@@ -39,6 +42,8 @@ import {
 
 const bubbleAI = require("../../assets/bubble-ai.png");
 const GREETING_ID = "bubbles-ai-greeting";
+const MAX_AI_FILES = 8;
+const MAX_AI_FILE_BYTES = 25 * 1024 * 1024;
 
 const suggestions = [
   "What is Bubbles?",
@@ -79,6 +84,9 @@ export default function AIChatScreen() {
   );
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<PickedFile[]>([]);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const listRef = useRef<FlatList<AIHistoryMessage>>(null);
   const atBottom = useRef(true);
   const loadedRef = useRef(false);
@@ -142,16 +150,70 @@ export default function AIChatScreen() {
     });
   };
 
-  const handleSend = async (override?: string) => {
-    const body = String(override ?? text).trim();
-    if (!body || sending) return;
+  const buildAttachmentMeta = (files: PickedFile[]): AIHistoryAttachment[] =>
+    files.map((file) => ({
+      kind: file.type?.startsWith("image/")
+        ? "image"
+        : file.type?.startsWith("video/")
+          ? "video"
+          : file.type?.startsWith("audio/")
+            ? "audio"
+            : "file",
+      name: file.name,
+      type: file.type,
+      size: file.size,
+    }));
+
+  const addAttachments = (incoming: PickedFile[]) => {
+    const tooBig = incoming.filter(
+      (file) => (file.size || 0) > MAX_AI_FILE_BYTES
+    );
+
+    if (tooBig.length > 0) {
+      showToast("Each file must be 25 MB or smaller.", "info");
+    }
+
+    const usable = incoming.filter(
+      (file) => (file.size || 0) <= MAX_AI_FILE_BYTES
+    );
+
+    setAttachments((current) => {
+      const next = [...current];
+
+      for (const file of usable) {
+        if (next.length >= MAX_AI_FILES) break;
+        if (next.some((item) => item.uri === file.uri)) continue;
+        next.push(file);
+      }
+
+      if (next.length < current.length + usable.length) {
+        showToast(`You can attach up to ${MAX_AI_FILES} files at once.`, "info");
+      }
+
+      return next;
+    });
+  };
+
+  const sendToAI = async ({
+    body,
+    files = [],
+  }: {
+    body: string;
+    files?: PickedFile[];
+  }) => {
+    const cleanBody = body.trim();
+
+    if ((!cleanBody && files.length === 0) || sending) return;
+
+    const displayText = cleanBody || "I've attached a file.";
 
     const userMessage: AIHistoryMessage = {
       id: makeLocalId("ai-user"),
       type: "user",
-      text: body,
+      text: displayText,
       createdAt: new Date().toISOString(),
       replyToText: replyTo?.text,
+      attachments: files.length > 0 ? buildAttachmentMeta(files) : undefined,
     };
 
     const previous = messages.filter(
@@ -164,20 +226,25 @@ export default function AIChatScreen() {
     }));
 
     const lastContent = replyTo
-      ? `Replying to: "${cleanAIText(replyTo.text)}"\n\n${body}`
-      : body;
+      ? `Replying to: "${cleanAIText(replyTo.text)}"\n\n${displayText}`
+      : displayText;
 
     setMessages((current) => [...current, userMessage]);
     setText("");
     setReplyTo(null);
+    setAttachments([]);
     setSending(true);
     atBottom.current = true;
 
     try {
-      const response = await chatWithAIAPI([
-        ...historyPayload,
-        { role: "user", content: lastContent },
-      ]);
+      const response = await chatWithAIFilesAPI(
+        [...historyPayload, { role: "user", content: lastContent }],
+        files.map((file) => ({
+          uri: file.uri,
+          name: file.name,
+          type: file.type,
+        }))
+      );
 
       const reply = cleanAIText(String(response.data?.reply || ""));
       if (!reply) {
@@ -217,6 +284,102 @@ export default function AIChatScreen() {
       setSending(false);
     }
   };
+
+  const handleSend = async (override?: string) => {
+    await sendToAI({
+      body: String(override ?? text),
+      files: override ? [] : attachments,
+    });
+  };
+
+  const handlePickPhotos = async () => {
+    setAttachMenuOpen(false);
+
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsMultipleSelection: true,
+        selectionLimit: MAX_AI_FILES,
+        quality: 0.85,
+      });
+
+      if (result.canceled) return;
+
+      addAttachments(
+        result.assets.map((asset, index) => ({
+          uri: asset.uri,
+          name: asset.fileName || `photo-${Date.now()}-${index + 1}.jpg`,
+          type: asset.mimeType || "image/jpeg",
+          size: asset.fileSize,
+        }))
+      );
+    } catch (error) {
+      showToast(getErrorMessage(error, "Unable to open your photos."), "error");
+    }
+  };
+
+  const handlePickFiles = async () => {
+    setAttachMenuOpen(false);
+
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        multiple: true,
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) return;
+
+      addAttachments(
+        result.assets.map((asset) => ({
+          uri: asset.uri,
+          name: asset.name || `file-${Date.now()}`,
+          type: asset.mimeType || "application/octet-stream",
+          size: asset.size,
+        }))
+      );
+    } catch (error) {
+      showToast(getErrorMessage(error, "Unable to open your files."), "error");
+    }
+  };
+
+  const handleVoiceRecorded = async (file: PickedFile) => {
+    setTranscribing(true);
+
+    try {
+      const response = await transcribeAudioAPI({
+        uri: file.uri,
+        name: file.name,
+        type: file.type,
+      });
+
+      const transcript = String(response.data?.text || "").trim();
+
+      if (!transcript) {
+        throw new Error("No speech was detected in that recording.");
+      }
+
+      await sendToAI({ body: transcript });
+    } catch (error) {
+      showToast(
+        getErrorMessage(error, "Could not transcribe that voice message."),
+        "error"
+      );
+    } finally {
+      setTranscribing(false);
+    }
+  };
+
+  const {
+    isRecording,
+    durationMillis,
+    starting: startingRecording,
+    start: startRecording,
+    stop: stopRecording,
+    cancel: cancelRecording,
+  } = useVoiceRecorder({
+    onRecorded: handleVoiceRecorded,
+    onError: (message) => showToast(message, "error"),
+  });
 
   const handleCopy = async () => {
     if (!selectedMessage) return;
@@ -403,6 +566,54 @@ export default function AIChatScreen() {
               </View>
             ) : null}
 
+            {item.attachments?.length ? (
+              <View style={styles.bubbleAttachments}>
+                {item.attachments.map((attachment, index) => (
+                  <View
+                    key={`${attachment.name}-${index}`}
+                    style={[
+                      styles.bubbleAttachment,
+                      {
+                        backgroundColor: isAI
+                          ? colors.surfaceAlt
+                          : "rgba(255,255,255,0.16)",
+                        borderColor: isAI
+                          ? colors.border
+                          : "rgba(255,255,255,0.22)",
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={
+                        attachment.kind === "image"
+                          ? "image-outline"
+                          : attachment.kind === "audio"
+                            ? "mic-outline"
+                            : attachment.kind === "video"
+                              ? "videocam-outline"
+                              : "document-outline"
+                      }
+                      size={13}
+                      color={isAI ? colors.primary : "#FFFFFF"}
+                    />
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.bubbleAttachmentName,
+                        {
+                          color: isAI
+                            ? colors.text
+                            : "rgba(255,255,255,0.92)",
+                        },
+                      ]}
+                    >
+                      {attachment.name}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
             <LinkifiedText
               text={item.text}
               style={[
@@ -518,7 +729,7 @@ export default function AIChatScreen() {
     <Screen>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior="padding"
       >
         <View
           style={[
@@ -679,49 +890,172 @@ export default function AIChatScreen() {
             </View>
           ) : null}
 
-          <View style={styles.composerRow}>
-            <TextInput
-              value={text}
-              onChangeText={setText}
-              placeholder="Ask Bubbles AI..."
-              placeholderTextColor={colors.textSoft}
-              selectionColor={colors.primary}
-              multiline
-              maxLength={4000}
-              style={[
-                styles.input,
-                {
-                  backgroundColor: colors.input,
-                  borderColor: colors.border,
-                  color: colors.text,
-                },
-              ]}
-            />
-
-            <Pressable
-              onPress={() => handleSend()}
-              disabled={sending || !text.trim()}
-              style={({ pressed }) => [
-                styles.sendButton,
-                {
-                  backgroundColor: text.trim()
-                    ? colors.primaryDeep
-                    : colors.surfaceAlt,
-                  opacity: pressed ? 0.82 : 1,
-                },
-              ]}
+          {transcribing ? (
+            <View
+              style={[styles.recordingBar, { backgroundColor: colors.surfaceAlt }]}
             >
-              {sending ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={[styles.recordingText, { color: colors.textMuted }]}>
+                Transcribing your voice message...
+              </Text>
+            </View>
+          ) : null}
+
+          {isRecording ? (
+            <View
+              style={[styles.recordingBar, { backgroundColor: colors.surfaceAlt }]}
+            >
+              <View
+                style={[styles.recordingDot, { backgroundColor: colors.danger }]}
+              />
+              <Text style={[styles.recordingText, { color: colors.text }]}>
+                Recording {formatDuration(durationMillis / 1000)}
+              </Text>
+              <Pressable onPress={cancelRecording} hitSlop={8}>
+                <Text style={[styles.recordingCancel, { color: colors.danger }]}>
+                  Cancel
+                </Text>
+              </Pressable>
+              <Pressable onPress={stopRecording} hitSlop={8}>
                 <Ionicons
-                  name="arrow-up"
-                  size={21}
-                  color={text.trim() ? "#FFFFFF" : colors.textSoft}
+                  name="checkmark-circle"
+                  size={27}
+                  color={colors.primary}
                 />
-              )}
-            </Pressable>
-          </View>
+              </Pressable>
+            </View>
+          ) : (
+            <>
+              {attachments.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.attachmentStrip}
+                >
+                  {attachments.map((file, index) => (
+                    <View
+                      key={`${file.uri}-${index}`}
+                      style={[
+                        styles.attachmentChip,
+                        {
+                          backgroundColor: colors.surfaceAlt,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    >
+                      <Ionicons
+                        name={
+                          file.type?.startsWith("image/")
+                            ? "image-outline"
+                            : "document-outline"
+                        }
+                        size={13}
+                        color={colors.primary}
+                      />
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.attachmentName, { color: colors.text }]}
+                      >
+                        {file.name}
+                      </Text>
+                      <Pressable
+                        onPress={() =>
+                          setAttachments((current) =>
+                            current.filter((_, itemIndex) => itemIndex !== index)
+                          )
+                        }
+                        hitSlop={8}
+                      >
+                        <Ionicons
+                          name="close"
+                          size={14}
+                          color={colors.textMuted}
+                        />
+                      </Pressable>
+                    </View>
+                  ))}
+                </ScrollView>
+              ) : null}
+
+              <View style={styles.composerRow}>
+                <Pressable
+                  onPress={() => setAttachMenuOpen(true)}
+                  disabled={sending}
+                  accessibilityLabel="Attach a file"
+                  style={({ pressed }) => [
+                    styles.attachButton,
+                    {
+                      backgroundColor: colors.surfaceAlt,
+                      opacity: pressed ? 0.7 : 1,
+                    },
+                  ]}
+                >
+                  <Ionicons name="add" size={22} color={colors.textMuted} />
+                </Pressable>
+
+                <TextInput
+                  value={text}
+                  onChangeText={setText}
+                  placeholder="Ask Bubbles AI..."
+                  placeholderTextColor={colors.textSoft}
+                  selectionColor={colors.primary}
+                  multiline
+                  maxLength={4000}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: colors.input,
+                      borderColor: colors.border,
+                      color: colors.text,
+                    },
+                  ]}
+                />
+
+                {text.trim() || attachments.length > 0 ? (
+                  <Pressable
+                    onPress={() => handleSend()}
+                    disabled={sending}
+                    style={({ pressed }) => [
+                      styles.sendButton,
+                      {
+                        backgroundColor: colors.primaryDeep,
+                        opacity: pressed ? 0.82 : 1,
+                      },
+                    ]}
+                  >
+                    {sending ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Ionicons name="arrow-up" size={21} color="#FFFFFF" />
+                    )}
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    onPress={startRecording}
+                    disabled={sending || startingRecording || transcribing}
+                    accessibilityLabel="Record a voice message"
+                    style={({ pressed }) => [
+                      styles.sendButton,
+                      {
+                        backgroundColor: colors.surfaceAlt,
+                        opacity: pressed ? 0.8 : 1,
+                      },
+                    ]}
+                  >
+                    {startingRecording ? (
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    ) : (
+                      <Ionicons
+                        name="mic-outline"
+                        size={21}
+                        color={colors.textMuted}
+                      />
+                    )}
+                  </Pressable>
+                )}
+              </View>
+            </>
+          )}
         </View>
       </KeyboardAvoidingView>
 
@@ -730,6 +1064,24 @@ export default function AIChatScreen() {
         title="AI message"
         options={messageOptions}
         onClose={() => setMessageMenuOpen(false)}
+      />
+
+      <ActionSheet
+        visible={attachMenuOpen}
+        title="Attach to your message"
+        options={[
+          {
+            label: "Photo",
+            icon: "image-outline",
+            onPress: handlePickPhotos,
+          },
+          {
+            label: "File",
+            icon: "document-outline",
+            onPress: handlePickFiles,
+          },
+        ]}
+        onClose={() => setAttachMenuOpen(false)}
       />
 
       <ForwardModal
@@ -996,5 +1348,73 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
+  },
+  attachButton: {
+    width: 40,
+    height: 44,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attachmentStrip: {
+    gap: 7,
+    paddingBottom: 8,
+    paddingRight: 4,
+  },
+  attachmentChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    maxWidth: 200,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingLeft: 9,
+    paddingRight: 7,
+    paddingVertical: 6,
+  },
+  attachmentName: {
+    flexShrink: 1,
+    fontSize: 11.5,
+    fontWeight: "600",
+  },
+  bubbleAttachments: {
+    gap: 5,
+    marginBottom: 6,
+  },
+  bubbleAttachment: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderRadius: 9,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  bubbleAttachmentName: {
+    flexShrink: 1,
+    fontSize: 11.5,
+    fontWeight: "600",
+  },
+  recordingBar: {
+    minHeight: 44,
+    borderRadius: 15,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+  },
+  recordingDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+  },
+  recordingText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  recordingCancel: {
+    fontSize: 12.5,
+    fontWeight: "700",
   },
 });

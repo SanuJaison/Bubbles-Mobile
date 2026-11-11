@@ -117,6 +117,13 @@ export type Conversation = {
   groupPermissions?: Chat["groupPermissions"];
 };
 
+export type AIHistoryAttachment = {
+  kind: "image" | "video" | "audio" | "file";
+  name: string;
+  type?: string;
+  size?: number;
+};
+
 export type AIHistoryMessage = {
   id: string;
   type: "user" | "ai";
@@ -125,6 +132,7 @@ export type AIHistoryMessage = {
   sources?: { title: string; url: string }[];
   showSources?: boolean;
   replyToText?: string;
+  attachments?: AIHistoryAttachment[];
 };
 
 export type RootStackParamList = {

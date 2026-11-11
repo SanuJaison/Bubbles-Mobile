@@ -24,6 +24,32 @@ const normalizeMessage = (value: any): AIHistoryMessage | null => {
         .slice(0, 5)
     : [];
 
+  const attachments = Array.isArray(value.attachments)
+    ? value.attachments
+        .filter(
+          (attachment: any) =>
+            attachment &&
+            typeof attachment.name === "string" &&
+            attachment.name.trim()
+        )
+        .map((attachment: any) => ({
+          kind:
+            attachment.kind === "image" ||
+            attachment.kind === "video" ||
+            attachment.kind === "audio"
+              ? attachment.kind
+              : ("file" as const),
+          name: String(attachment.name).slice(0, 160),
+          type:
+            typeof attachment.type === "string"
+              ? attachment.type.slice(0, 120)
+              : undefined,
+          size:
+            typeof attachment.size === "number" ? attachment.size : undefined,
+        }))
+        .slice(0, 8)
+    : [];
+
   return {
     id: String(value.id || `${type}-${Math.random().toString(36).slice(2)}`),
     type,
@@ -35,6 +61,7 @@ const normalizeMessage = (value: any): AIHistoryMessage | null => {
       typeof value.replyToText === "string" && value.replyToText.trim()
         ? cleanAIText(value.replyToText)
         : undefined,
+    attachments: attachments.length > 0 ? attachments : undefined,
   };
 };
 
