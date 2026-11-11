@@ -56,6 +56,8 @@ export type Message = {
   replyTo?: ReplyPreview | null;
   isDelivered?: boolean;
   isRead?: boolean;
+  deliveredAt?: string | null;
+  readAt?: string | null;
   isDeleted?: boolean;
   isEdited?: boolean;
   isForwarded?: boolean;

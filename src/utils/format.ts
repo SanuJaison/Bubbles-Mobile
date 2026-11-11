@@ -105,6 +105,25 @@ export const formatDuration = (seconds?: number) => {
   return `${minutes}:${remaining}`;
 };
 
+// Full timestamp used by the message info panel.
+export const formatInfoTime = (value?: string | null) => {
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
+  return date.toLocaleString([], {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
 export const messagePreview = (message?: Message | null) => {
   if (!message) return "";
   if (message.isDeleted) return "This message was deleted";

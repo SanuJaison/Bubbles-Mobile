@@ -55,6 +55,7 @@ import { EmojiPicker } from "../components/EmojiPicker";
 import { ForwardModal } from "../components/ForwardModal";
 import { GroupSettingsModal } from "../components/GroupSettingsModal";
 import { InfoDialog } from "../components/InfoDialog";
+import { MessageInfoDialog } from "../components/MessageInfoDialog";
 import { MessageBubble } from "../components/MessageBubble";
 import { ProfileSheet } from "../components/ProfileSheet";
 import { ReportDialog } from "../components/ReportDialog";
@@ -181,6 +182,8 @@ export default function ChatScreen() {
   } | null>(null);
   const [pinningId, setPinningId] = useState<string | null>(null);
   const [pinnedIndex, setPinnedIndex] = useState(0);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const [infoTarget, setInfoTarget] = useState<Message | null>(null);
 
   const listRef = useRef<FlatList<Message>>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1434,6 +1437,17 @@ export default function ChatScreen() {
     const isLocalMessage = selectedMessage._id.startsWith("local-");
 
     if (!selectedMessage.isDeleted && !isLocalMessage) {
+      options.push({
+        label: "Message info",
+        icon: "information-circle-outline",
+        onPress: () => {
+          setInfoTarget(selectedMessage);
+          setMessageMenuOpen(false);
+        },
+      });
+    }
+
+    if (!selectedMessage.isDeleted && !isLocalMessage) {
       const pinnedById = userIdOf(selectedMessage.pinnedBy);
       const canTogglePin =
         !selectedMessage.isPinned ||
@@ -1913,6 +1927,7 @@ export default function ChatScreen() {
               nativeEvent.layoutMeasurement.height -
               nativeEvent.contentOffset.y;
             atBottom.current = distance < 140;
+            setShowJumpToBottom(distance > 420);
           }}
           scrollEventThrottle={120}
           onScrollToIndexFailed={({ index }) => {
@@ -1989,6 +2004,27 @@ export default function ChatScreen() {
             ) : undefined
           }
         />
+
+          {showJumpToBottom ? (
+            <Pressable
+              onPress={() => {
+                atBottom.current = true;
+                setShowJumpToBottom(false);
+                listRef.current?.scrollToEnd({ animated: true });
+              }}
+              accessibilityLabel="Jump to the latest message"
+              style={({ pressed }) => [
+                styles.jumpToBottom,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: colors.border,
+                  opacity: pressed ? 0.75 : 1,
+                },
+              ]}
+            >
+              <Ionicons name="chevron-down" size={20} color={colors.text} />
+            </Pressable>
+          ) : null}
         </View>
 
         <View
@@ -2542,6 +2578,14 @@ export default function ChatScreen() {
         onConfirm={handleDeleteGroup}
       />
 
+      <MessageInfoDialog
+        visible={Boolean(infoTarget)}
+        message={infoTarget}
+        currentUserId={currentUserId}
+        readReceiptsEnabled={user?.readReceipts !== false}
+        onClose={() => setInfoTarget(null)}
+      />
+
       <InfoDialog
         visible={Boolean(infoMessage)}
         title="Calls"
@@ -2634,6 +2678,22 @@ const styles = StyleSheet.create({
   messagesWrap: {
     flex: 1,
     overflow: "hidden",
+  },
+  jumpToBottom: {
+    position: "absolute",
+    right: 14,
+    bottom: 14,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 4,
+    shadowColor: "#000000",
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
   },
   pinnedBanner: {
     minHeight: 52,
