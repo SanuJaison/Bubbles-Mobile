@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import type { ReactNode } from "react";
 import {
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -36,7 +35,7 @@ export const AuthShell = ({
     <Screen edges={["top", "left", "right", "bottom"]}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior="padding"
       >
         <ScrollView
           contentContainerStyle={styles.scroll}
