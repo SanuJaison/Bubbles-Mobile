@@ -71,6 +71,14 @@
           "cameraPermission": "Bubbles needs your camera so you can make video calls.",
           "microphonePermission": "Bubbles needs your microphone so you can make voice and video calls."
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraProguardRules": "-keep class org.webrtc.** { *; }\n-dontwarn org.webrtc.**"
+          }
+        }
       ]
     ],
     "experiments": {
