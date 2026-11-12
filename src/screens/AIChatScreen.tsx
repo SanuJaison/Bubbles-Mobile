@@ -737,8 +737,8 @@ export default function AIChatScreen() {
 
   return (
     <Screen>
+      <ChatWallpaper value={wallpaperFor(AI_WALLPAPER_ID)} />
       <KeyboardAwareView style={styles.flex}>
-        <ChatWallpaper value={wallpaperFor(AI_WALLPAPER_ID)} />
         <View
           style={[
             styles.header,
