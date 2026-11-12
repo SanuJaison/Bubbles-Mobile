@@ -10,9 +10,12 @@ import {
 } from "react";
 import { getMyChatsAPI } from "../api/chats";
 import { getErrorMessage } from "../api/client";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Chat, Conversation } from "../types";
-import { formatChat, userIdOf } from "../utils/chat";
+import { formatChat, userIdOf, userNameOf } from "../utils/chat";
+import { notifyIncomingMessage } from "../lib/notifications";
 import { useAuth } from "./AuthContext";
+import { useChatPrefs } from "./ChatPrefsContext";
 import { useSocket } from "./SocketContext";
 
 type ChatsContextValue = {
@@ -37,6 +40,8 @@ type ChatsContextValue = {
 
 const ChatsContext = createContext<ChatsContextValue | null>(null);
 
+const CACHE_PREFIX = "bubblesChatsCache:";
+
 const sortConversations = (items: Conversation[]) =>
   [...items].sort((first, second) => {
     const firstTime = new Date(first.lastMessageAt || 0).getTime();
@@ -47,6 +52,7 @@ const sortConversations = (items: Conversation[]) =>
 export const ChatsProvider = ({ children }: { children: ReactNode }) => {
   const { user, token } = useAuth();
   const { socket } = useSocket();
+  const { isMuted } = useChatPrefs();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -190,6 +196,41 @@ export const ChatsProvider = ({ children }: { children: ReactNode }) => {
     []
   );
 
+  // Paint the last known chat list straight away and refresh in the
+  // background — a cold backend can take ~40s to wake, and the list should not
+  // sit on a spinner for that long.
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    let active = true;
+
+    AsyncStorage.getItem(CACHE_PREFIX + currentUserId)
+      .then((raw) => {
+        if (!active || !raw) return;
+
+        const cached = JSON.parse(raw);
+
+        if (Array.isArray(cached) && cached.length) {
+          setConversations((previous) => (previous.length ? previous : cached));
+          setLoading(false);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!currentUserId || !conversations.length) return;
+
+    void AsyncStorage.setItem(
+      CACHE_PREFIX + currentUserId,
+      JSON.stringify(conversations)
+    ).catch(() => {});
+  }, [conversations, currentUserId]);
+
   useEffect(() => {
     const timer = setTimeout(() => {
       refreshChats();
@@ -215,6 +256,22 @@ export const ChatsProvider = ({ children }: { children: ReactNode }) => {
       const isActive = activeChatIdRef.current === chatId;
 
       const formatted = formatChat(chat, currentUserId, currentUserName);
+
+      if (
+        !isMine &&
+        !isActive &&
+        !isMuted(chatId) &&
+        user?.messageNotifications !== false
+      ) {
+        void notifyIncomingMessage({
+          chatId,
+          chatTitle: formatted.title,
+          isGroup: Boolean(chat.isGroup),
+          senderName: userNameOf(message.sender),
+          message,
+          sound: user?.notificationSound !== false,
+        });
+      }
 
       setConversations((previous) => {
         const existing = previous.find(
@@ -262,6 +319,9 @@ export const ChatsProvider = ({ children }: { children: ReactNode }) => {
     currentUserName,
     refreshChats,
     removeConversation,
+    isMuted,
+    user?.messageNotifications,
+    user?.notificationSound,
   ]);
 
   const value = useMemo<ChatsContextValue>(

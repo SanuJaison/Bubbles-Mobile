@@ -68,6 +68,7 @@ import { useChats } from "../context/ChatsContext";
 import { useSocket } from "../context/SocketContext";
 import { useToast } from "../context/ToastContext";
 import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
+import { clearMessageNotifications } from "../lib/notifications";
 import { useTheme } from "../theme";
 import type { Chat, Conversation, Message, User } from "../types";
 import {
@@ -424,6 +425,7 @@ export default function ChatScreen() {
 
       setActiveChatId(chatId);
       loadChat();
+      void clearMessageNotifications(chatId);
 
       return () => {
         setActiveChatId(null);

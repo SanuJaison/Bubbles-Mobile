@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -27,6 +27,7 @@ import { WallpaperPicker } from "../components/WallpaperPicker";
 import { useAuth } from "../context/AuthContext";
 import { useChatPrefs } from "../context/ChatPrefsContext";
 import { useToast } from "../context/ToastContext";
+import { prepareNotifications } from "../lib/notifications";
 import { useTheme } from "../theme";
 import type { User } from "../types";
 import { userIdOf } from "../utils/chat";
@@ -182,7 +183,8 @@ export default function SettingsScreen() {
   const { showToast } = useToast();
   const { defaultWallpaper, setDefaultWallpaper } = useChatPrefs();
 
-  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [optimistic, setOptimistic] = useState<Record<string, boolean>>({});
+  const savingRef = useRef<Set<string>>(new Set());
   const [visibilityField, setVisibilityField] = useState<VisibilityField | null>(
     null
   );
@@ -192,9 +194,9 @@ export default function SettingsScreen() {
 
   const patchSettings = async (updates: Partial<UserSettings>) => {
     const key = Object.keys(updates)[0] || "settings";
-    if (savingKey) return;
+    if (savingRef.current.has(key)) return false;
 
-    setSavingKey(key);
+    savingRef.current.add(key);
 
     try {
       const response = await updateUserSettingsAPI(updates);
@@ -202,11 +204,40 @@ export default function SettingsScreen() {
       if (response.data?.user) {
         await updateUser(response.data.user);
       }
+
+      return true;
     } catch (error) {
       showToast(getErrorMessage(error, "Unable to save that setting."), "error");
+      return false;
     } finally {
-      setSavingKey(null);
+      savingRef.current.delete(key);
     }
+  };
+
+  /**
+   * Switches used to wait for the round trip before moving, so the native
+   * thumb snapped back and the tap looked ignored. The value is now applied
+   * locally straight away and rolled back if the request fails.
+   */
+  const toggleSetting = async (
+    key: "onlineStatus" | "readReceipts" | "messageNotifications" | "notificationSound" | "enterToSend",
+    next: boolean
+  ) => {
+    if (savingRef.current.has(key)) return;
+
+    setOptimistic((previous) => ({ ...previous, [key]: next }));
+
+    if (key === "messageNotifications" && next) {
+      void prepareNotifications();
+    }
+
+    await patchSettings({ [key]: next } as Partial<UserSettings>);
+
+    setOptimistic((previous) => {
+      const copy = { ...previous };
+      delete copy[key];
+      return copy;
+    });
   };
 
   const unblock = async (blockedUser: User | string) => {
@@ -294,18 +325,16 @@ export default function SettingsScreen() {
             icon="radio-outline"
             label="Show when I'm online"
             hint="Turn off to always appear offline"
-            value={user?.onlineStatus !== false}
-            disabled={savingKey === "onlineStatus"}
-            onChange={(next) => patchSettings({ onlineStatus: next })}
+            value={optimistic.onlineStatus ?? user?.onlineStatus !== false}
+            onChange={(next) => toggleSetting("onlineStatus", next)}
           />
           <Divider />
           <ToggleRow
             icon="checkmark-done-outline"
             label="Read receipts"
             hint="Share blue ticks when you read messages"
-            value={user?.readReceipts !== false}
-            disabled={savingKey === "readReceipts"}
-            onChange={(next) => patchSettings({ readReceipts: next })}
+            value={optimistic.readReceipts ?? user?.readReceipts !== false}
+            onChange={(next) => toggleSetting("readReceipts", next)}
           />
         </Section>
 
@@ -313,17 +342,15 @@ export default function SettingsScreen() {
           <ToggleRow
             icon="notifications-outline"
             label="Message notifications"
-            value={user?.messageNotifications !== false}
-            disabled={savingKey === "messageNotifications"}
-            onChange={(next) => patchSettings({ messageNotifications: next })}
+            value={optimistic.messageNotifications ?? user?.messageNotifications !== false}
+            onChange={(next) => toggleSetting("messageNotifications", next)}
           />
           <Divider />
           <ToggleRow
             icon="volume-high-outline"
             label="Notification sound"
-            value={user?.notificationSound !== false}
-            disabled={savingKey === "notificationSound"}
-            onChange={(next) => patchSettings({ notificationSound: next })}
+            value={optimistic.notificationSound ?? user?.notificationSound !== false}
+            onChange={(next) => toggleSetting("notificationSound", next)}
           />
         </Section>
 
@@ -332,9 +359,8 @@ export default function SettingsScreen() {
             icon="return-down-forward-outline"
             label="Enter to send"
             hint="When off, Enter adds a new line"
-            value={user?.enterToSend !== false}
-            disabled={savingKey === "enterToSend"}
-            onChange={(next) => patchSettings({ enterToSend: next })}
+            value={optimistic.enterToSend ?? user?.enterToSend !== false}
+            onChange={(next) => toggleSetting("enterToSend", next)}
           />
           <Divider />
           <LinkRow

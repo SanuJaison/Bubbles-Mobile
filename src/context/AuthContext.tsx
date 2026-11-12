@@ -57,6 +57,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       setApiToken(stored.token);
 
+      // Render straight from the cached profile so a cold backend (Render can
+      // take ~40s to wake) never blocks startup. The profile is refreshed in
+      // the background below.
+      if (stored.user) {
+        setToken(stored.token);
+        setUser(stored.user);
+        setLoading(false);
+      }
+
       try {
         const response = await getProfileAPI();
         if (!active) return;

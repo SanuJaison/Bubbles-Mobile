@@ -4,6 +4,8 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { CallOverlay } from "../components/CallOverlay";
+import { LoadingScreen } from "../components/LoadingScreen";
+import { NotificationBridge } from "../components/NotificationBridge";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { CallProvider } from "../context/CallContext";
 import { ChatPrefsProvider } from "../context/ChatPrefsContext";
@@ -34,7 +36,7 @@ const SplashController = () => {
 const RootNavigator = () => {
   const { token, user, loading } = useAuth();
 
-  if (loading) return null;
+  if (loading) return <LoadingScreen />;
 
   const signedIn = Boolean(token && user);
 
@@ -68,6 +70,7 @@ export default function RootLayout() {
                   <CallProvider>
                     <ThemedStatusBar />
                     <SplashController />
+                    <NotificationBridge />
                     <RootNavigator />
                     <CallOverlay />
                   </CallProvider>
