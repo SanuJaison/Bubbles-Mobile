@@ -16,7 +16,7 @@
       "package": "com.bubbles.chat",
       "versionCode": 3,
       "adaptiveIcon": {
-        "backgroundColor": "#090610",
+        "backgroundColor": "#010107",
         "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false,
@@ -47,7 +47,7 @@
         "expo-splash-screen",
         {
           "image": "./assets/splash-icon.png",
-          "backgroundColor": "#090610",
+          "backgroundColor": "#010107",
           "imageWidth": 180
         }
       ],
