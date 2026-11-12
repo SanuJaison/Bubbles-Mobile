@@ -163,6 +163,7 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
   const callRef = useRef<ActiveCall | null>(null);
   const pcRef = useRef<any>(null);
   const localStreamRef = useRef<RNMediaStream | null>(null);
+  const remoteStreamRef = useRef<RNMediaStream | null>(null);
   const callIdRef = useRef<string | null>(null);
   const remoteUserIdRef = useRef<string | null>(null);
   const pendingCandidatesRef = useRef<any[]>([]);
@@ -252,6 +253,7 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
     pcRef.current = null;
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
+    remoteStreamRef.current = null;
     pendingCandidatesRef.current = [];
     callIdRef.current = null;
     remoteUserIdRef.current = null;
@@ -380,13 +382,46 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
       pc.ontrack = (event: any) => {
         const [stream] = event.streams || [];
 
-        if (stream) setRemoteStream(stream);
+        if (stream) {
+          remoteStreamRef.current = stream;
+          setRemoteStream(stream);
+          return;
+        }
+
+        // Older Android builds occasionally deliver a bare track with no
+        // stream attached. Grouping the tracks ourselves keeps remote video
+        // working there instead of leaving the call black.
+        const module = loadWebRTC();
+
+        if (!event.track || !module) return;
+
+        const target =
+          remoteStreamRef.current || new module.MediaStream();
+
+        remoteStreamRef.current = target;
+
+        if (!target.getTracks().some((track: any) => track.id === event.track.id)) {
+          target.addTrack(event.track);
+        }
+
+        setRemoteStream(target);
       };
 
       pc.onconnectionstatechange = () => {
-        setConnectionState(pc.connectionState);
+        const state = pc.connectionState;
 
-        if (pc.connectionState === "failed") {
+        setConnectionState(state);
+
+        if (state === "failed") {
+          // Tell the server too: without this the other side keeps ringing and
+          // both accounts stay marked busy, so the next call fails as "busy".
+          const callId = callIdRef.current;
+          const remoteId = remoteUserIdRef.current;
+
+          if (socket && callId && remoteId) {
+            socket.emit("call:end", { callId, toUserId: remoteId });
+          }
+
           showToast("Call connection lost", "error");
           finalize(callRef.current?.startedAt ? "completed" : "missed");
           cleanup();
@@ -685,6 +720,10 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
 
       ringTimeoutRef.current = setTimeout(() => {
         if (callRef.current?.id !== callId) return;
+
+        // Tell the server the ring is over, otherwise both accounts stay
+        // marked busy and the next call is rejected as "busy".
+        socket.emit("call:end", { callId, toUserId: String(fromUserId) });
 
         showToast("Missed call", "info");
         finalize("missed");

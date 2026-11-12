@@ -232,13 +232,12 @@ export default function ProfileScreen() {
                   >
                     {option.label}
                   </Text>
-                  {active ? (
-                    <Ionicons
-                      name="checkmark-circle"
-                      size={17}
-                      color={colors.primary}
-                    />
-                  ) : null}
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={17}
+                    color={colors.primary}
+                    style={{ opacity: active ? 1 : 0 }}
+                  />
                 </Pressable>
               );
             })}
@@ -417,12 +416,15 @@ const styles = StyleSheet.create({
   },
   themeOption: {
     flex: 1,
-    minHeight: 58,
+    // Fixed height plus an always-reserved check slot: the selected tile used
+    // to grow by the checkmark and push its icon up out of line.
+    minHeight: 68,
     borderRadius: 13,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
+    gap: 5,
+    paddingVertical: 8,
   },
   themeLabel: {
     fontSize: 10.5,

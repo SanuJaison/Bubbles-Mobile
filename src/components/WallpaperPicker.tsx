@@ -13,6 +13,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ActionSheet } from "./ActionSheet";
 import {
   DEFAULT_WALLPAPER_VALUE,
   WALLPAPERS,
@@ -66,13 +67,37 @@ export const WallpaperPicker = ({
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState(false);
-  const [scope, setScope] = useState<WallpaperScope>("chat");
+  const [pending, setPending] = useState<{ value: string } | null>(null);
 
-  // Reset the choice each time the sheet is dismissed so it always opens on
-  // "this chat only".
+  // Reset the choice each time the sheet is dismissed.
   const close = () => {
-    setScope("chat");
     onClose();
+  };
+
+  /**
+   * A wallpaper can belong to one chat or to every chat. Rather than a toggle
+   * buried in the sheet, the choice is asked for right after the wallpaper is
+   * picked, which is the moment the user actually has to decide.
+   */
+  const choose = (value: string) => {
+    if (!allowApplyToAll) {
+      onSelect(value, "chat");
+      close();
+      return;
+    }
+
+    setPending({ value });
+    close();
+  };
+
+  const applyScope = (scope: WallpaperScope) => {
+    const next = pending?.value;
+
+    setPending(null);
+
+    if (next === undefined) return;
+
+    onSelect(next, scope);
   };
 
   const pickPhoto = async () => {
@@ -99,8 +124,7 @@ export const WallpaperPicker = ({
         // session instead of silently doing nothing.
       }
 
-      onSelect(stored, scope);
-      close();
+      choose(stored);
     } finally {
       setBusy(false);
     }
@@ -109,69 +133,34 @@ export const WallpaperPicker = ({
   const activeValue = value || DEFAULT_WALLPAPER_VALUE;
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={close}
-    >
-      <Pressable
-        style={[styles.overlay, { backgroundColor: colors.overlay }]}
-        onPress={close}
+    <>
+      <Modal
+        visible={visible}
+        transparent
+        animationType="slide"
+        onRequestClose={close}
       >
         <Pressable
-          onPress={(event) => event.stopPropagation()}
-          style={[
-            styles.sheet,
-            {
-              backgroundColor: colors.surface,
-              borderColor: colors.border,
-              paddingBottom: Math.max(insets.bottom, 14),
-            },
-          ]}
+          style={[styles.overlay, { backgroundColor: colors.overlay }]}
+          onPress={close}
         >
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            style={[
+              styles.sheet,
+              {
+                backgroundColor: colors.surface,
+                borderColor: colors.border,
+                paddingBottom: Math.max(insets.bottom, 14),
+              },
+            ]}
+          >
           <View style={styles.head}>
             <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
             <Pressable onPress={close} hitSlop={10}>
               <Ionicons name="close" size={22} color={colors.textMuted} />
             </Pressable>
           </View>
-
-          {allowApplyToAll ? (
-            <View
-              style={[
-                styles.scopeRow,
-                {
-                  backgroundColor: colors.surfaceAlt,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              {(["chat", "all"] as const).map((option) => {
-                const active = scope === option;
-
-                return (
-                  <Pressable
-                    key={option}
-                    onPress={() => setScope(option)}
-                    style={[
-                      styles.scopeOption,
-                      active && { backgroundColor: colors.primary },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.scopeText,
-                        { color: active ? "#FFFFFF" : colors.textMuted },
-                      ]}
-                    >
-                      {option === "chat" ? "This chat only" : "All chats"}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : null}
 
           <ScrollView
             showsVerticalScrollIndicator={false}
@@ -184,10 +173,7 @@ export const WallpaperPicker = ({
                 return (
                   <Pressable
                     key={preset.id}
-                    onPress={() => {
-                      onSelect(presetValue(preset.id), scope);
-                      close();
-                    }}
+                    onPress={() => choose(presetValue(preset.id))}
                     style={({ pressed }) => [
                       styles.tile,
                       {
@@ -266,10 +252,7 @@ export const WallpaperPicker = ({
 
             {allowReset ? (
               <Pressable
-                onPress={() => {
-                  onSelect("", scope);
-                  close();
-                }}
+                onPress={() => choose("")}
                 style={({ pressed }) => [
                   styles.actionRow,
                   {
@@ -292,6 +275,27 @@ export const WallpaperPicker = ({
         </Pressable>
       </Pressable>
     </Modal>
+
+      {/* Outside the picker's Modal: React Native does not render a hidden
+          Modal's children, so a nested sheet would never appear. */}
+      <ActionSheet
+        visible={pending !== null}
+        title="Apply this wallpaper to"
+        options={[
+          {
+            label: "This chat only",
+            icon: "chatbubble-outline",
+            onPress: () => applyScope("chat"),
+          },
+          {
+            label: "Every chat",
+            icon: "albums-outline",
+            onPress: () => applyScope("all"),
+          },
+        ]}
+        onClose={() => setPending(null)}
+      />
+    </>
   );
 };
 

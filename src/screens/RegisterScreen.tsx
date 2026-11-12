@@ -6,6 +6,7 @@ import { getErrorMessage } from "../api/client";
 import { AuthShell } from "../components/AuthShell";
 import { GradientButton } from "../components/GradientButton";
 import { TextField } from "../components/TextField";
+import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { PRIVACY_URL, TERMS_URL } from "../config";
 import { useTheme } from "../theme";
@@ -25,6 +26,7 @@ const passwordProblem = (password: string) => {
 
 export default function RegisterScreen() {
   const { colors } = useTheme();
+  const { login } = useAuth();
   const { showToast } = useToast();
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
@@ -71,18 +73,26 @@ export default function RegisterScreen() {
     setLoading(true);
 
     try {
-      await registerAPI({
+      const response = await registerAPI({
         name: cleanName,
         username: cleanUsername,
         email: cleanEmail,
         password,
       });
 
-      showToast("Account created. Check your inbox to verify your email.", "success");
-      router.replace({
-        pathname: "/verify-email",
-        params: { email: cleanEmail },
-      });
+      const token = response.data?.token;
+      const nextUser = response.data?.user;
+
+      // The app skips email verification entirely: the backend signs the new
+      // account in straight away, so there is no "check your inbox" step.
+      if (token && nextUser) {
+        await login(token, nextUser);
+        showToast("Welcome to Bubbles!", "success");
+        return;
+      }
+
+      showToast("Account created. Sign in to continue.", "success");
+      router.replace("/login");
     } catch (registerError) {
       setError(
         getErrorMessage(registerError, "Unable to create your account right now.")

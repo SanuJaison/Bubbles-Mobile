@@ -38,10 +38,12 @@ const RTCVideo = ({
   stream,
   mirror = false,
   style,
+  zOrder = 1,
 }: {
   stream: any;
   mirror?: boolean;
   style?: object;
+  zOrder?: 0 | 1 | 2;
 }) => {
   const module = loadWebRTC();
   const RTCView = module?.RTCView;
@@ -50,13 +52,16 @@ const RTCVideo = ({
     return <View style={[style, { backgroundColor: "#0B0712" }]} />;
   }
 
+  // zOrder 0 draws the video *behind* the app window, where this screen's own
+  // background hides it completely — that is what made remote video black.
+  // 1 puts it above the window and 2 keeps the small self-view above that.
   return (
     <RTCView
       streamURL={stream.toURL()}
       style={style}
       objectFit="cover"
       mirror={mirror}
-      zOrder={mirror ? 1 : 0}
+      zOrder={zOrder}
     />
   );
 };
@@ -140,7 +145,8 @@ export const CallOverlay = () => {
         ? formatDuration(elapsed)
         : "Connecting...";
 
-  const showRemoteVideo = isVideo && isActive && Boolean(remoteStream);
+  const remoteHasVideo = Boolean(remoteStream?.getVideoTracks?.().length);
+  const showRemoteVideo = isVideo && isActive && remoteHasVideo;
 
   return (
     <Modal
@@ -234,6 +240,7 @@ export const CallOverlay = () => {
             <RTCVideo
               stream={localStream}
               mirror
+              zOrder={2}
               style={StyleSheet.absoluteFill}
             />
           </View>

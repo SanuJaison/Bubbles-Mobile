@@ -1,6 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { Tabs } from "expo-router";
 import { useTheme } from "../../../theme";
+
+const bubbleAI = require("../../../../assets/bubble-ai.png");
 
 export default function TabsLayout() {
   const { colors } = useTheme();
@@ -57,11 +60,16 @@ export default function TabsLayout() {
         name="ai"
         options={{
           title: "Bubbles AI",
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? "sparkles" : "sparkles-outline"}
-              size={size}
-              color={typeof color === "string" ? color : colors.primary}
+          tabBarIcon: ({ size, focused }) => (
+            <Image
+              source={bubbleAI}
+              style={{
+                width: size,
+                height: size,
+                borderRadius: size * 0.3,
+                opacity: focused ? 1 : 0.55,
+              }}
+              contentFit="contain"
             />
           ),
         }}

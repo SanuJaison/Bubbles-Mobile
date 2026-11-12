@@ -12,6 +12,10 @@ const api = create({
   timeout: 60000,
 });
 
+// Lets the backend tell app requests from website requests. The app skips
+// email verification at sign-up, and that shortcut is keyed off this header.
+api.defaults.headers.common["x-bubbles-client"] = "mobile";
+
 api.interceptors.request.use((config) => {
   if (authToken) {
     config.headers = config.headers || {};

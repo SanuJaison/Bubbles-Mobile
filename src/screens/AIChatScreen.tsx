@@ -20,11 +20,14 @@ import { chatWithAIFilesAPI, transcribeAudioAPI } from "../api/ai";
 import { getErrorMessage } from "../api/client";
 import { sendMessageAPI, type PickedFile } from "../api/messages";
 import { ActionSheet, type ActionSheetOption } from "../components/ActionSheet";
+import { ChatWallpaper } from "../components/ChatWallpaper";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ForwardModal } from "../components/ForwardModal";
 import { LinkifiedText } from "../components/LinkifiedText";
 import { Screen } from "../components/Screen";
+import { WallpaperPicker } from "../components/WallpaperPicker";
 import { useAuth } from "../context/AuthContext";
+import { useChatPrefs } from "../context/ChatPrefsContext";
 import { useChats } from "../context/ChatsContext";
 import { useToast } from "../context/ToastContext";
 import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
@@ -42,6 +45,9 @@ import {
 
 const bubbleAI = require("../../assets/bubble-ai.png");
 const GREETING_ID = "bubbles-ai-greeting";
+// The AI conversation stores its wallpaper under a reserved key so it can be
+// themed like any other chat without colliding with a real chat id.
+const AI_WALLPAPER_ID = "bubbles-ai";
 const MAX_AI_FILES = 8;
 const MAX_AI_FILE_BYTES = 25 * 1024 * 1024;
 
@@ -57,6 +63,8 @@ export default function AIChatScreen() {
   const { user } = useAuth();
   const { conversations } = useChats();
   const { showToast } = useToast();
+  const { wallpaperFor, setWallpaper, setWallpaperForAll, wallpapers } =
+    useChatPrefs();
   const userId = user?._id || user?.id || "guest";
   const firstName = user?.name?.split(" ")[0] || "";
 
@@ -86,6 +94,8 @@ export default function AIChatScreen() {
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<PickedFile[]>([]);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [wallpaperOpen, setWallpaperOpen] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const listRef = useRef<FlatList<AIHistoryMessage>>(null);
   const atBottom = useRef(true);
@@ -728,6 +738,7 @@ export default function AIChatScreen() {
   return (
     <Screen>
       <KeyboardAwareView style={styles.flex}>
+        <ChatWallpaper value={wallpaperFor(AI_WALLPAPER_ID)} />
         <View
           style={[
             styles.header,
@@ -747,7 +758,8 @@ export default function AIChatScreen() {
             </Text>
           </View>
           <Pressable
-            onPress={() => setClearConfirmOpen(true)}
+            onPress={() => setHeaderMenuOpen(true)}
+            accessibilityLabel="Bubbles AI options"
             style={({ pressed }) => [
               styles.headerButton,
               {
@@ -756,7 +768,11 @@ export default function AIChatScreen() {
               },
             ]}
           >
-            <Ionicons name="trash-outline" size={18} color={colors.textMuted} />
+            <Ionicons
+              name="ellipsis-horizontal"
+              size={18}
+              color={colors.textMuted}
+            />
           </Pressable>
         </View>
 
@@ -1080,6 +1096,44 @@ export default function AIChatScreen() {
           },
         ]}
         onClose={() => setAttachMenuOpen(false)}
+      />
+
+      <ActionSheet
+        visible={headerMenuOpen}
+        title="Bubbles AI"
+        options={[
+          {
+            label: "Chat wallpaper",
+            icon: "color-palette-outline",
+            onPress: () => setWallpaperOpen(true),
+          },
+          {
+            label: "Clear conversation",
+            icon: "trash-outline",
+            destructive: true,
+            onPress: () => setClearConfirmOpen(true),
+          },
+        ]}
+        onClose={() => setHeaderMenuOpen(false)}
+      />
+
+      <WallpaperPicker
+        visible={wallpaperOpen}
+        title="Bubbles AI wallpaper"
+        value={wallpaperFor(AI_WALLPAPER_ID)}
+        allowReset={Boolean(wallpapers[AI_WALLPAPER_ID])}
+        allowApplyToAll
+        onClose={() => setWallpaperOpen(false)}
+        onSelect={(next, scope) => {
+          if (scope === "all") {
+            setWallpaperForAll(next);
+            showToast("Wallpaper applied to all chats", "success");
+            return;
+          }
+
+          setWallpaper(AI_WALLPAPER_ID, next);
+          showToast("Wallpaper updated", "success");
+        }}
       />
 
       <ForwardModal
