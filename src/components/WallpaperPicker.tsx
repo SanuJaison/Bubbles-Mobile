@@ -69,7 +69,6 @@ export const WallpaperPicker = ({
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<{ value: string } | null>(null);
 
-  // Reset the choice each time the sheet is dismissed.
   const close = () => {
     onClose();
   };
@@ -155,126 +154,126 @@ export const WallpaperPicker = ({
               },
             ]}
           >
-          <View style={styles.head}>
-            <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
-            <Pressable onPress={close} hitSlop={10}>
-              <Ionicons name="close" size={22} color={colors.textMuted} />
-            </Pressable>
-          </View>
-
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scroll}
-          >
-            <View style={styles.grid}>
-              {WALLPAPERS.map((preset) => {
-                const active = activeValue === presetValue(preset.id);
-
-                return (
-                  <Pressable
-                    key={preset.id}
-                    onPress={() => choose(presetValue(preset.id))}
-                    style={({ pressed }) => [
-                      styles.tile,
-                      {
-                        borderColor: active ? colors.primary : colors.border,
-                        opacity: pressed ? 0.8 : 1,
-                      },
-                    ]}
-                  >
-                    <LinearGradient
-                      colors={
-                        isDark ? [...preset.darkColors] : [...preset.colors]
-                      }
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.swatch}
-                    />
-
-                    <View style={styles.tileFooter}>
-                      <Text
-                        numberOfLines={1}
-                        style={[styles.tileName, { color: colors.text }]}
-                      >
-                        {preset.name}
-                      </Text>
-                      {active ? (
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={16}
-                          color={colors.primary}
-                        />
-                      ) : null}
-                    </View>
-                  </Pressable>
-                );
-              })}
+            <View style={styles.head}>
+              <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
+              <Pressable onPress={close} hitSlop={10}>
+                <Ionicons name="close" size={22} color={colors.textMuted} />
+              </Pressable>
             </View>
 
-            <Pressable
-              onPress={pickPhoto}
-              disabled={busy}
-              style={({ pressed }) => [
-                styles.actionRow,
-                {
-                  backgroundColor: colors.primarySoft,
-                  opacity: pressed || busy ? 0.7 : 1,
-                },
-              ]}
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.scroll}
             >
-              {busy ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <Ionicons name="image-outline" size={20} color={colors.primary} />
-              )}
-              <Text style={[styles.actionText, { color: colors.primary }]}>
-                Choose a photo
-              </Text>
-            </Pressable>
+              <View style={styles.grid}>
+                {WALLPAPERS.map((preset) => {
+                  const active = activeValue === presetValue(preset.id);
 
-            {isCustomWallpaper(value) ? (
-              <View
-                style={[
-                  styles.currentRow,
-                  { borderColor: colors.border },
-                ]}
-              >
-                <Ionicons
-                  name="checkmark-circle"
-                  size={17}
-                  color={colors.success}
-                />
-                <Text style={[styles.currentText, { color: colors.textMuted }]}>
-                  Using your photo
-                </Text>
+                  return (
+                    <Pressable
+                      key={preset.id}
+                      onPress={() => choose(presetValue(preset.id))}
+                      style={({ pressed }) => [
+                        styles.tile,
+                        {
+                          borderColor: active ? colors.primary : colors.border,
+                          opacity: pressed ? 0.8 : 1,
+                        },
+                      ]}
+                    >
+                      <LinearGradient
+                        colors={
+                          isDark ? [...preset.darkColors] : [...preset.colors]
+                        }
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.swatch}
+                      />
+
+                      <View style={styles.tileFooter}>
+                        <Text
+                          numberOfLines={1}
+                          style={[styles.tileName, { color: colors.text }]}
+                        >
+                          {preset.name}
+                        </Text>
+                        {active ? (
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={16}
+                            color={colors.primary}
+                          />
+                        ) : null}
+                      </View>
+                    </Pressable>
+                  );
+                })}
               </View>
-            ) : null}
 
-            {allowReset ? (
               <Pressable
-                onPress={() => choose("")}
+                onPress={pickPhoto}
+                disabled={busy}
                 style={({ pressed }) => [
                   styles.actionRow,
                   {
-                    backgroundColor: colors.surfaceAlt,
-                    opacity: pressed ? 0.7 : 1,
+                    backgroundColor: colors.primarySoft,
+                    opacity: pressed || busy ? 0.7 : 1,
                   },
                 ]}
               >
-                <Ionicons
-                  name="refresh-outline"
-                  size={19}
-                  color={colors.textMuted}
-                />
-                <Text style={[styles.actionText, { color: colors.textMuted }]}>
-                  Use the default wallpaper
+                {busy ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <Ionicons name="image-outline" size={20} color={colors.primary} />
+                )}
+                <Text style={[styles.actionText, { color: colors.primary }]}>
+                  Choose a photo
                 </Text>
               </Pressable>
-            ) : null}
-          </ScrollView>
+
+              {isCustomWallpaper(value) ? (
+                <View
+                  style={[
+                    styles.currentRow,
+                    { borderColor: colors.border },
+                  ]}
+                >
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={17}
+                    color={colors.success}
+                  />
+                  <Text style={[styles.currentText, { color: colors.textMuted }]}>
+                    Using your photo
+                  </Text>
+                </View>
+              ) : null}
+
+              {allowReset ? (
+                <Pressable
+                  onPress={() => choose("")}
+                  style={({ pressed }) => [
+                    styles.actionRow,
+                    {
+                      backgroundColor: colors.surfaceAlt,
+                      opacity: pressed ? 0.7 : 1,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="refresh-outline"
+                    size={19}
+                    color={colors.textMuted}
+                  />
+                  <Text style={[styles.actionText, { color: colors.textMuted }]}>
+                    Use the default wallpaper
+                  </Text>
+                </Pressable>
+              ) : null}
+            </ScrollView>
+          </Pressable>
         </Pressable>
-      </Pressable>
-    </Modal>
+      </Modal>
 
       {/* Outside the picker's Modal: React Native does not render a hidden
           Modal's children, so a nested sheet would never appear. */}
