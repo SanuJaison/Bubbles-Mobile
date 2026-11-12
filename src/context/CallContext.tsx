@@ -380,31 +380,44 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
       };
 
       pc.ontrack = (event: any) => {
-        const [stream] = event.streams || [];
-
-        if (stream) {
-          remoteStreamRef.current = stream;
-          setRemoteStream(stream);
-          return;
-        }
-
-        // Older Android builds occasionally deliver a bare track with no
-        // stream attached. Grouping the tracks ourselves keeps remote video
-        // working there instead of leaving the call black.
         const module = loadWebRTC();
 
-        if (!event.track || !module) return;
+        if (!module) return;
 
-        const target =
-          remoteStreamRef.current || new module.MediaStream();
+        // Android fires this once per track and each event can carry a stream
+        // that only knows about its own track. Storing that stream directly
+        // meant the last event won: when audio arrived after video the remote
+        // view rendered an audio-only stream as a black rectangle. Collect
+        // every track into one stream so video is always included.
+        const incoming: any[] = [];
 
-        remoteStreamRef.current = target;
+        if (event.track) incoming.push(event.track);
 
-        if (!target.getTracks().some((track: any) => track.id === event.track.id)) {
-          target.addTrack(event.track);
-        }
+        (event.streams || []).forEach((stream: any) => {
+          (stream?.getTracks?.() || []).forEach((track: any) =>
+            incoming.push(track)
+          );
+        });
 
-        setRemoteStream(target);
+        const tracks = remoteStreamRef.current
+          ? [...remoteStreamRef.current.getTracks()]
+          : [];
+
+        incoming.forEach((track) => {
+          if (
+            track &&
+            !tracks.some((existing) => existing.id === track.id)
+          ) {
+            tracks.push(track);
+          }
+        });
+
+        if (tracks.length === 0) return;
+
+        const next = new module.MediaStream(tracks);
+
+        remoteStreamRef.current = next;
+        setRemoteStream(next);
       };
 
       pc.onconnectionstatechange = () => {
