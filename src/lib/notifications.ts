@@ -185,7 +185,21 @@ export const clearMessageNotifications = async (chatId?: string) => {
         )
     );
 
-    await Notifications.dismissAllNotificationsAsync();
+    // Dismiss only our message notifications. `dismissAllNotificationsAsync`
+    // calls NotificationManager.cancelAll(), which would also wipe the
+    // foreground-service notification that keeps the socket alive.
+    const presented = await Notifications.getPresentedNotificationsAsync();
+
+    await Promise.all(
+      presented
+        .filter(
+          (item) =>
+            !chatId || String(item.request.content.data?.chatId || "") === chatId
+        )
+        .map((item) =>
+          Notifications.dismissNotificationAsync(item.request.identifier)
+        )
+    );
   } catch {
     // Ignore — clearing is cosmetic.
   }
