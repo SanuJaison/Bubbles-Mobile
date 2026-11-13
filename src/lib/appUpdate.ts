@@ -17,6 +17,7 @@ export type AvailableUpdate = {
   version: string;
   notes: string;
   url: string;
+  size?: number;
 };
 
 const parseVersion = (value: string) =>
@@ -88,6 +89,7 @@ export const checkForUpdate = async (
       version,
       notes: String(release?.body || "").trim(),
       url: apk?.browser_download_url || UPDATE_FALLBACK_URL,
+      size: typeof apk?.size === "number" ? apk.size : undefined,
     };
   } catch {
     return null;
@@ -132,6 +134,27 @@ export const downloadAndInstallUpdate = async (
 
   if (!result?.uri) {
     throw new Error("The update could not be downloaded.");
+  }
+
+  if (result.status < 200 || result.status >= 300) {
+    await FileSystem.deleteAsync(result.uri, { idempotent: true }).catch(
+      () => {}
+    );
+    throw new Error(`The update download failed (HTTP ${result.status}).`);
+  }
+
+  // A partial APK would only fail later inside Android's installer, so catch a
+  // truncated download here and fall back to the browser.
+  if (update.size) {
+    const info = await FileSystem.getInfoAsync(result.uri);
+    const writtenSize = info.exists && "size" in info ? info.size : 0;
+
+    if (writtenSize && Math.abs(writtenSize - update.size) > 1024) {
+      await FileSystem.deleteAsync(result.uri, { idempotent: true }).catch(
+        () => {}
+      );
+      throw new Error("The update download was incomplete.");
+    }
   }
 
   const contentUri = await FileSystem.getContentUriAsync(result.uri);
