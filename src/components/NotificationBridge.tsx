@@ -14,7 +14,7 @@ import {
  * right chat when a message notification is tapped.
  */
 export const NotificationBridge = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const handled = useRef<string | null>(null);
   const checked = useRef(false);
   const response = Notifications.useLastNotificationResponse();
@@ -30,14 +30,18 @@ export const NotificationBridge = () => {
 
       // Android silently drops every alert when notifications are off, so tell
       // the user instead of letting messages disappear without a trace.
-      if (!enabled && !checked.current) {
+      if (
+        !enabled &&
+        !checked.current &&
+        user?.messageNotifications !== false
+      ) {
         checked.current = true;
         setSettingsPrompt(true);
       }
     }, 900);
 
     return () => clearTimeout(timer);
-  }, [token]);
+  }, [token, user?.messageNotifications]);
 
   useEffect(() => {
     if (!response) return;

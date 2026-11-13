@@ -296,12 +296,15 @@ export const ChatsProvider = ({ children }: { children: ReactNode }) => {
       const senderId = userIdOf(message.sender);
       const isMine = senderId === currentUserId;
       const isActive = activeChatIdRef.current === chatId;
+      const isForeground = AppState.currentState === "active";
 
       const formatted = formatChat(chat, currentUserId, currentUserName);
 
+      // Suppress alerts only while the user is actually looking at the chat.
+      // If the app is minimized on that chat, a notification is still wanted.
       if (
         !isMine &&
-        !isActive &&
+        !(isActive && isForeground) &&
         !isMuted(chatId) &&
         user?.messageNotifications !== false
       ) {
