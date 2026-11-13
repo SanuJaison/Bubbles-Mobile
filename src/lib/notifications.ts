@@ -157,11 +157,13 @@ export const notifyIncomingMessage = async ({
         data: { chatId, url: `/chat/${chatId}` },
         ...(Platform.OS === "android" ? { color: "#A855F7" } : {}),
       },
-      // `null` posts the notification right away. A time-interval trigger goes
-      // through AlarmManager, which Android 12+ throttles (or drops) unless the
-      // app holds the exact-alarm permission — that was why alerts never made
-      // it to the notification bar.
-      trigger: null,
+      // A channel-only trigger is delivered immediately but still uses the
+      // high-importance "messages" channel (its sound, vibration and colour).
+      // A time-interval trigger goes through AlarmManager, which Android 12+
+      // throttles or drops without the exact-alarm permission — that was why
+      // alerts never made it to the notification bar.
+      trigger:
+        Platform.OS === "android" ? { channelId: MESSAGE_CHANNEL_ID } : null,
     });
   } catch {
     // Notifications are best effort — never break message delivery over them.

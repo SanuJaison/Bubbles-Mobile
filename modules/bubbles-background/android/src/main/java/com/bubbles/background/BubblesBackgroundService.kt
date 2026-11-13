@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 
 /**
@@ -19,9 +20,17 @@ import androidx.core.app.NotificationCompat
  */
 class BubblesBackgroundService : Service() {
 
+  private var wakeLock: PowerManager.WakeLock? = null
+
   override fun onCreate() {
     super.onCreate()
     createChannel()
+    acquireWakeLock()
+  }
+
+  override fun onDestroy() {
+    releaseWakeLock()
+    super.onDestroy()
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -46,6 +55,42 @@ class BubblesBackgroundService : Service() {
   }
 
   override fun onBind(intent: Intent?): IBinder? = null
+
+  /**
+   * A foreground service is not enough on its own: once the screen goes off
+   * Android suspends the CPU and the socket stops reading until the next wake
+   * up. A partial wake lock keeps the processor running (screen and radios are
+   * unaffected) so message delivery is immediate.
+   */
+  private fun acquireWakeLock() {
+    if (wakeLock?.isHeld == true) return
+
+    try {
+      val powerManager = getSystemService(PowerManager::class.java) ?: return
+
+      wakeLock = powerManager
+        .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG)
+        .apply {
+          setReferenceCounted(false)
+          acquire()
+        }
+    } catch (error: Exception) {
+      // Missing permission or a revoked service must not crash the app.
+      wakeLock = null
+    }
+  }
+
+  private fun releaseWakeLock() {
+    try {
+      if (wakeLock?.isHeld == true) {
+        wakeLock?.release()
+      }
+    } catch (error: Exception) {
+      // Ignore — the system already dropped the lock.
+    }
+
+    wakeLock = null
+  }
 
   private fun createChannel() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -99,5 +144,6 @@ class BubblesBackgroundService : Service() {
 
     private const val CHANNEL_ID = "bubbles-background"
     private const val NOTIFICATION_ID = 4210
+    private const val WAKE_LOCK_TAG = "Bubbles:chat-connection"
   }
 }
