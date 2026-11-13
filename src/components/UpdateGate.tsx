@@ -70,7 +70,7 @@ export const UpdateGate = () => {
       message={
         downloading
           ? `Downloading Bubbles ${update?.version}… ${percent}%\n\nKeep the app open until the installer appears.`
-          : `Bubbles ${update?.version} is ready to install. You are on ${currentVersion()}.\n\nYour chats and settings stay exactly as they are.`
+          : `Bubbles ${update?.version} is ready to install. You are on ${currentVersion()}.\n\nYour chats and settings stay exactly as they are. Android will ask you to allow installs from Bubbles the first time.`
       }
       confirmLabel={downloading ? "Downloading…" : "Update now"}
       cancelLabel="Later"

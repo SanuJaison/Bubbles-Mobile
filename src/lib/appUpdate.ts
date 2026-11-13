@@ -55,8 +55,6 @@ export const checkForUpdate = async (
     if (Date.now() - lastCheck < CHECK_INTERVAL_MS) return null;
   }
 
-  await AsyncStorage.setItem(LAST_CHECK_KEY, String(Date.now())).catch(() => {});
-
   try {
     const response = await fetch(RELEASE_API, {
       headers: { Accept: "application/vnd.github+json" },
@@ -68,6 +66,12 @@ export const checkForUpdate = async (
     const tag = String(release?.tag_name || "");
 
     if (!tag) return null;
+
+    // Only remember a successful check, so being offline does not silence the
+    // prompt for six hours.
+    await AsyncStorage.setItem(LAST_CHECK_KEY, String(Date.now())).catch(
+      () => {}
+    );
 
     const version = tag.replace(/^android-/i, "").replace(/^v/i, "");
 

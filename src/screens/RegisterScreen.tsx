@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { registerAPI } from "../api/auth";
 import { getErrorMessage } from "../api/client";
@@ -35,6 +35,17 @@ export default function RegisterScreen() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [slow, setSlow] = useState(false);
+
+  // The free backend can be asleep when a new person signs up, so explain the
+  // wait instead of leaving a silent spinner on screen.
+  useEffect(() => {
+    if (!loading) return;
+
+    const timer = setTimeout(() => setSlow(true), 5000);
+
+    return () => clearTimeout(timer);
+  }, [loading]);
 
   const handleRegister = async () => {
     const cleanName = name.trim();
@@ -70,6 +81,7 @@ export default function RegisterScreen() {
     }
 
     setError("");
+    setSlow(false);
     setLoading(true);
 
     try {
@@ -225,6 +237,12 @@ export default function RegisterScreen() {
         loading={loading}
         icon="person-add-outline"
       />
+
+      {loading && slow ? (
+        <Text style={[styles.hint, { color: colors.textMuted }]}>
+          Still working… this can take up to 30 seconds on a cold start.
+        </Text>
+      ) : null}
     </AuthShell>
   );
 }
@@ -261,5 +279,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     paddingHorizontal: 2,
+  },
+  hint: {
+    fontSize: 12.5,
+    lineHeight: 18,
+    paddingHorizontal: 2,
+    textAlign: "center",
   },
 });
