@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: android-build
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,22 +27,55 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --install \
+            "platforms;android-37" \
+            "build-tools;37.0.0" \
+            "platform-tools" \
+            "ndk;27.1.12297006" \
+            "cmake;3.22.1"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Install dependencies
         run: npm ci
 
-      - name: Build APK with EAS
+      - name: Generate the native project
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: npx eas-cli@latest build --platform android --profile production --non-interactive --json > eas-build.json
+          BUBBLES_ANDROID_ABIS: arm64-v8a
+          CI: "1"
+        run: npx expo prebuild --platform android --no-install
 
-      - name: Read APK URL
-        id: apk
+      - name: Configure release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: node scripts/ci/configure-signing.js
+
+      - name: Build release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Verify the APK is signed with the release key
         run: |
-          node -e "const fs=require('fs');const data=JSON.parse(fs.readFileSync('eas-build.json','utf8'));const build=Array.isArray(data)?data[0]:data;if(!build?.artifacts?.buildUrl){throw new Error('EAS did not return an APK URL');}fs.writeFileSync('apk-url.txt',build.artifacts.buildUrl);"
-          echo "url=$(cat apk-url.txt)" >> "$GITHUB_OUTPUT"
-
-      - name: Download APK
-        run: curl -L "${{ steps.apk.outputs.url }}" -o Bubbles.apk
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          ls -l "$APK"
+          BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --print-certs "$APK"
+          cp "$APK" Bubbles.apk
 
       - name: Publish GitHub release
         env:

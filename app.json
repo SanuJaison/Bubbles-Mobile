@@ -37,7 +37,6 @@
         "android.permission.VIBRATE",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
-        "android.permission.WAKE_LOCK",
         "android.permission.REQUEST_INSTALL_PACKAGES"
       ]
     },
