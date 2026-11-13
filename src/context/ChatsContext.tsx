@@ -11,6 +11,7 @@ import {
 import { getMyChatsAPI } from "../api/chats";
 import { getErrorMessage } from "../api/client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AppState } from "react-native";
 import type { Chat, Conversation } from "../types";
 import { formatChat, formatPresenceSubtitle, userIdOf, userNameOf } from "../utils/chat";
 import { notifyIncomingMessage } from "../lib/notifications";
@@ -51,7 +52,7 @@ const sortConversations = (items: Conversation[]) =>
 
 export const ChatsProvider = ({ children }: { children: ReactNode }) => {
   const { user, token } = useAuth();
-  const { socket } = useSocket();
+  const { socket, connected } = useSocket();
   const { isMuted } = useChatPrefs();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -231,13 +232,54 @@ export const ChatsProvider = ({ children }: { children: ReactNode }) => {
     ).catch(() => {});
   }, [conversations, currentUserId]);
 
+  // A silent refresh keeps the pull-to-refresh spinner (and the big loading
+  // indicator) off screen while the first list is being fetched.
   useEffect(() => {
     const timer = setTimeout(() => {
-      refreshChats();
+      refreshChats(true);
     }, 0);
 
-    return () => clearTimeout(timer);
+    // Never let the list sit on a spinner while a cold backend wakes up.
+    const spinnerCap = setTimeout(() => setLoading(false), 1200);
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(spinnerCap);
+    };
   }, [refreshChats]);
+
+  // Messages sent while the socket was down are not replayed by the server, so
+  // the list has to be refetched every time the socket (re)connects.
+  const wasConnected = useRef(false);
+
+  useEffect(() => {
+    if (!connected) {
+      wasConnected.current = false;
+      return;
+    }
+
+    if (wasConnected.current) return;
+
+    wasConnected.current = true;
+    void refreshChats(true);
+  }, [connected, refreshChats]);
+
+  // Android suspends the process while the app is in the background, so the
+  // socket may have died without the reconnect loop noticing yet. Refresh on
+  // resume and kick a dead socket back to life.
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
+
+      if (socket && !socket.connected) {
+        socket.connect();
+      }
+
+      void refreshChats(true);
+    });
+
+    return () => subscription.remove();
+  }, [socket, refreshChats]);
 
   useEffect(() => {
     if (!socket) return;

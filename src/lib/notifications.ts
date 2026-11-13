@@ -1,6 +1,8 @@
 /* eslint-disable import/namespace -- the import resolver cannot see the enums
    that expo-notifications re-exports from its *.types modules */
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
+import * as IntentLauncher from "expo-intent-launcher";
 import * as Notifications from "expo-notifications";
 import { AppState, Platform } from "react-native";
 import type { Message } from "../types";
@@ -155,11 +157,11 @@ export const notifyIncomingMessage = async ({
         data: { chatId, url: `/chat/${chatId}` },
         ...(Platform.OS === "android" ? { color: "#A855F7" } : {}),
       },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-        seconds: 1,
-        channelId: MESSAGE_CHANNEL_ID,
-      },
+      // `null` posts the notification right away. A time-interval trigger goes
+      // through AlarmManager, which Android 12+ throttles (or drops) unless the
+      // app holds the exact-alarm permission — that was why alerts never made
+      // it to the notification bar.
+      trigger: null,
     });
   } catch {
     // Notifications are best effort — never break message delivery over them.
@@ -186,5 +188,35 @@ export const clearMessageNotifications = async (chatId?: string) => {
     await Notifications.dismissAllNotificationsAsync();
   } catch {
     // Ignore — clearing is cosmetic.
+  }
+};
+
+/**
+ * Opens the system screen where notifications for Bubbles can be re-enabled.
+ * Android 13+ silently drops every notification when the permission is off, and
+ * once it has been denied twice the app can no longer show the prompt itself.
+ */
+export const openNotificationSettings = async () => {
+  if (Platform.OS !== "android") return;
+
+  const packageName =
+    Constants.expoConfig?.android?.package || "com.bubbles.chat";
+
+  try {
+    await IntentLauncher.startActivityAsync(
+      IntentLauncher.ActivityAction.APP_NOTIFICATION_SETTINGS,
+      {
+        extra: { "android.provider.extra.APP_PACKAGE": packageName },
+      }
+    );
+  } catch {
+    try {
+      await IntentLauncher.startActivityAsync(
+        IntentLauncher.ActivityAction.APPLICATION_DETAILS_SETTINGS,
+        { data: `package:${packageName}` }
+      );
+    } catch {
+      // Nothing else we can do — the user can still use Android settings.
+    }
   }
 };

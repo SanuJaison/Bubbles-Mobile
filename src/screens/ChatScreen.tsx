@@ -7,6 +7,7 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   FlatList,
   Keyboard,
   Pressable,
@@ -191,6 +192,7 @@ export default function ChatScreen() {
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingActive = useRef(false);
   const atBottom = useRef(true);
+  const focused = useRef(false);
 
   const handleVoiceRecorded = useCallback(
     (file: PickedFile) => {
@@ -361,11 +363,13 @@ export default function ChatScreen() {
   );
 
   const loadChat = useCallback(
-    async (isRefresh = false) => {
+    async (isRefresh = false, silent = false) => {
       if (!chatId) return;
 
-      if (isRefresh) setRefreshing(true);
-      else setLoading(true);
+      // `silent` is used when the socket reconnects or the app resumes: the
+      // screen is already showing messages, so no spinner and no error banner.
+      if (isRefresh && !silent) setRefreshing(true);
+      else if (!silent) setLoading(true);
 
       try {
         const [chatResult, messageResult] = await Promise.allSettled([
@@ -387,7 +391,28 @@ export default function ChatScreen() {
           const nextMessages = Array.isArray(messageResult.value.data?.messages)
             ? messageResult.value.data.messages
             : [];
-          setMessages(nextMessages);
+
+          if (silent) {
+            // Keep anything the socket delivered (or an optimistic send) that
+            // the fetch missed, and let the server copy win on conflicts.
+            setMessages((previous) => {
+              const byId = new Map(
+                previous.map((message) => [message._id, message])
+              );
+
+              nextMessages.forEach((message: Message) => {
+                byId.set(message._id, message);
+              });
+
+              return Array.from(byId.values()).sort(
+                (first, second) =>
+                  new Date(first.createdAt || 0).getTime() -
+                  new Date(second.createdAt || 0).getTime()
+              );
+            });
+          } else {
+            setMessages(nextMessages);
+          }
         }
 
         if (
@@ -402,12 +427,16 @@ export default function ChatScreen() {
         markMessagesAsDeliveredAPI(chatId).catch(() => {});
         markMessagesAsReadAPI(chatId).catch(() => {});
       } catch (error) {
+        if (silent) return;
+
         setLoadError(
           getErrorMessage(error, "Unable to load this conversation.")
         );
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (!silent) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
     [
@@ -423,15 +452,31 @@ export default function ChatScreen() {
     useCallback(() => {
       if (!chatId) return;
 
+      focused.current = true;
       setActiveChatId(chatId);
       loadChat();
       void clearMessageNotifications(chatId);
 
       return () => {
+        focused.current = false;
         setActiveChatId(null);
       };
     }, [chatId, loadChat, setActiveChatId])
   );
+
+  // A message that arrived while the socket was down (or while Android had the
+  // app suspended) is not replayed, so pull the latest messages whenever the
+  // screen comes back to the foreground or the socket reconnects.
+  useEffect(() => {
+    if (!chatId) return;
+
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active" || !focused.current) return;
+      void loadChat(false, true);
+    });
+
+    return () => subscription.remove();
+  }, [chatId, loadChat]);
 
   useEffect(() => {
     if (!socket || !chatId) return;
@@ -440,6 +485,11 @@ export default function ChatScreen() {
 
     const handleConnect = () => {
       socket.emit("joinChat", chatId);
+
+      // Catch up on anything sent while the socket was down.
+      if (focused.current) {
+        void loadChat(false, true);
+      }
     };
 
     const handleNewMessage = (payload: any) => {
@@ -622,7 +672,7 @@ export default function ChatScreen() {
       socket.off("userStoppedTyping", handleStoppedTyping);
       socket.off("typingUsers", handleTypingUsers);
     };
-  }, [socket, chatId, currentUserId, currentUserName, markChatRead]);
+  }, [socket, chatId, currentUserId, currentUserName, markChatRead, loadChat]);
 
   useEffect(() => {
     if (messages.length === 0) return;

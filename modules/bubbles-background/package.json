@@ -1,0 +1,7 @@
+{
+  "name": "bubbles-background",
+  "version": "1.0.0",
+  "description": "Keeps the Bubbles chat socket alive with a low-priority foreground service.",
+  "main": "index.ts",
+  "private": true
+}

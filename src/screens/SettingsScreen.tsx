@@ -27,7 +27,10 @@ import { WallpaperPicker } from "../components/WallpaperPicker";
 import { useAuth } from "../context/AuthContext";
 import { useChatPrefs } from "../context/ChatPrefsContext";
 import { useToast } from "../context/ToastContext";
-import { prepareNotifications } from "../lib/notifications";
+import {
+  openNotificationSettings,
+  prepareNotifications,
+} from "../lib/notifications";
 import { useTheme } from "../theme";
 import type { User } from "../types";
 import { userIdOf } from "../utils/chat";
@@ -351,6 +354,15 @@ export default function SettingsScreen() {
             label="Notification sound"
             value={optimistic.notificationSound ?? user?.notificationSound !== false}
             onChange={(next) => toggleSetting("notificationSound", next)}
+          />
+          <Divider />
+          <LinkRow
+            icon="phone-portrait-outline"
+            label="Phone notification settings"
+            value="Allow alerts on this device"
+            onPress={() => {
+              void openNotificationSettings();
+            }}
           />
         </Section>
 

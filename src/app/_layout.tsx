@@ -3,6 +3,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { BackgroundServiceBridge } from "../components/BackgroundServiceBridge";
 import { CallOverlay } from "../components/CallOverlay";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { NotificationBridge } from "../components/NotificationBridge";
@@ -72,6 +73,7 @@ export default function RootLayout() {
                     <ThemedStatusBar />
                     <SplashController />
                     <NotificationBridge />
+                    <BackgroundServiceBridge />
                     <RootNavigator />
                     <CallOverlay />
                     <UpdateGate />

@@ -1,3 +1,5 @@
+import Constants from "expo-constants";
+
 const trimTrailingSlashes = (value: string) => value.replace(/\/+$/, "");
 
 const fallbackApi = "https://bubbles-backend-bx2c.onrender.com/api";
@@ -12,7 +14,7 @@ export const SOCKET_URL = trimTrailingSlashes(
 );
 
 export const APP_NAME = "Bubbles";
-export const APP_VERSION = "1.0.0";
+export const APP_VERSION = String(Constants.expoConfig?.version || "1.0.0");
 export const WEB_URL = "https://bubbles-zeta-nine.vercel.app";
 export const FEEDBACK_URL = `${WEB_URL}/feedback`;
 export const PRIVACY_URL = `${WEB_URL}/privacy`;
