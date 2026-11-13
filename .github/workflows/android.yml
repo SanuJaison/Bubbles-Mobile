@@ -33,17 +33,26 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Android SDK packages
         run: |
-          sdkmanager --install \
+          # The runner image already ships cmdline-tools; android-actions/setup-android
+          # fails on it because it tries to install the removed "tools" package.
+          SDKMANAGER="$(command -v sdkmanager || true)"
+
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)"
+          fi
+
+          echo "Using $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install \
             "platforms;android-37" \
-            "build-tools;37.0.0" \
             "platform-tools" \
             "ndk;27.1.12297006" \
             "cmake;3.22.1"
+
+          # Build-tools are auto-downloaded by AGP if this name is unavailable.
+          "$SDKMANAGER" --install "build-tools;37.0.0" || "$SDKMANAGER" --install "build-tools;36.0.0"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
