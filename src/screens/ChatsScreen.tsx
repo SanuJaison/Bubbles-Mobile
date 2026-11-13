@@ -98,14 +98,28 @@ export default function ChatsScreen() {
 
   const query = search.trim().toLowerCase();
 
+  // Opening someone from search creates an empty chat document on the server.
+  // It only becomes a real conversation once a message exists, so keep those
+  // blank chats out of the list (and out of the counts) until then.
+  const listedChats = useMemo(
+    () =>
+      conversations.filter(
+        (conversation) =>
+          conversation.isGroup ||
+          Boolean(conversation.lastMessage) ||
+          conversation.unread > 0
+      ),
+    [conversations]
+  );
+
   const sortedChats = useMemo(() => {
     // Pinned chats float to the top while keeping the server's recency order
     // inside each group (Array.prototype.sort is stable in Hermes/V8).
-    return [...conversations].sort(
+    return [...listedChats].sort(
       (first, second) =>
         Number(isPinned(second.id)) - Number(isPinned(first.id))
     );
-  }, [conversations, isPinned]);
+  }, [listedChats, isPinned]);
 
   const filteredChats = useMemo(() => {
     const scoped = sortedChats.filter((conversation) => {
@@ -137,7 +151,7 @@ export default function ChatsScreen() {
   }, [sortedChats, query, filter, isArchived, isFavorite]);
 
   const filterOptions = useMemo(() => {
-    const active = conversations.filter(
+    const active = listedChats.filter(
       (conversation) => !isArchived(conversation.id)
     );
 
@@ -162,12 +176,12 @@ export default function ChatsScreen() {
       {
         id: "archived" as const,
         label: "Archived",
-        count: conversations.filter((conversation) =>
+        count: listedChats.filter((conversation) =>
           isArchived(conversation.id)
         ).length,
       },
     ];
-  }, [conversations, isArchived, isFavorite]);
+  }, [listedChats, isArchived, isFavorite]);
 
   const showAI =
     aiSummary.hasConversation &&
@@ -410,10 +424,10 @@ export default function ChatsScreen() {
         <View style={styles.headerText}>
           <Text style={[styles.title, { color: colors.text }]}>Chats</Text>
           <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-            {conversations.length === 0
+            {listedChats.length === 0
               ? "Your conversations live here"
-              : `${conversations.length} conversation${
-                  conversations.length === 1 ? "" : "s"
+              : `${listedChats.length} conversation${
+                  listedChats.length === 1 ? "" : "s"
                 }`}
           </Text>
         </View>
@@ -690,7 +704,7 @@ export default function ChatsScreen() {
         mode="group"
         contactUserId={selectedChat?.otherUserId}
         contactName={selectedChat?.title}
-        groups={conversations.filter((item) => item.isGroup)}
+        groups={listedChats.filter((item) => item.isGroup)}
         onClose={() => setAddPeopleOpen(false)}
         onDone={() => {
           setSelectedChat(null);

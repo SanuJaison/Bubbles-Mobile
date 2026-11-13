@@ -6,6 +6,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { CallOverlay } from "../components/CallOverlay";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { NotificationBridge } from "../components/NotificationBridge";
+import { UpdateGate } from "../components/UpdateGate";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { CallProvider } from "../context/CallContext";
 import { ChatPrefsProvider } from "../context/ChatPrefsContext";
@@ -73,6 +74,7 @@ export default function RootLayout() {
                     <NotificationBridge />
                     <RootNavigator />
                     <CallOverlay />
+                    <UpdateGate />
                   </CallProvider>
                 </ToastProvider>
               </ChatsProvider>

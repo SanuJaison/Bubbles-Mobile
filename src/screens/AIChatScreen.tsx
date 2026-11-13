@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,6 +23,7 @@ import { sendMessageAPI, type PickedFile } from "../api/messages";
 import { ActionSheet, type ActionSheetOption } from "../components/ActionSheet";
 import { ChatWallpaper } from "../components/ChatWallpaper";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { EmojiPicker } from "../components/EmojiPicker";
 import { ForwardModal } from "../components/ForwardModal";
 import { LinkifiedText } from "../components/LinkifiedText";
 import { Screen } from "../components/Screen";
@@ -94,6 +96,7 @@ export default function AIChatScreen() {
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<PickedFile[]>([]);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [wallpaperOpen, setWallpaperOpen] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
@@ -296,10 +299,26 @@ export default function AIChatScreen() {
   };
 
   const handleSend = async (override?: string) => {
+    setEmojiPickerOpen(false);
+
     await sendToAI({
       body: String(override ?? text),
       files: override ? [] : attachments,
     });
+  };
+
+  const handleEmojiSelect = (emoji: string) => {
+    setText((previous) => `${previous}${emoji}`);
+  };
+
+  const toggleEmojiPicker = () => {
+    const next = !emojiPickerOpen;
+
+    if (next) {
+      Keyboard.dismiss();
+    }
+
+    setEmojiPickerOpen(next);
   };
 
   const handlePickPhotos = async () => {
@@ -991,6 +1010,10 @@ export default function AIChatScreen() {
                 </ScrollView>
               ) : null}
 
+              {emojiPickerOpen ? (
+                <EmojiPicker onSelect={handleEmojiSelect} />
+              ) : null}
+
               <View style={styles.composerRow}>
                 <Pressable
                   onPress={() => setAttachMenuOpen(true)}
@@ -1024,6 +1047,27 @@ export default function AIChatScreen() {
                     },
                   ]}
                 />
+
+                <Pressable
+                  onPress={toggleEmojiPicker}
+                  disabled={sending}
+                  accessibilityLabel="Emoji picker"
+                  style={({ pressed }) => [
+                    styles.attachButton,
+                    {
+                      backgroundColor: emojiPickerOpen
+                        ? colors.primarySoft
+                        : colors.surfaceAlt,
+                      opacity: pressed ? 0.7 : 1,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="happy-outline"
+                    size={23}
+                    color={emojiPickerOpen ? colors.primary : colors.textMuted}
+                  />
+                </Pressable>
 
                 {text.trim() || attachments.length > 0 ? (
                   <Pressable

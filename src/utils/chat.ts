@@ -13,6 +13,16 @@ export const userNameOf = (value?: User | string | null, fallback = "") => {
   return value.name || value.username || fallback;
 };
 
+export const formatPresenceSubtitle = (
+  isOnline: boolean,
+  lastSeen?: string | null
+) =>
+  isOnline
+    ? "Online"
+    : lastSeen
+      ? `Last seen ${formatListTime(lastSeen)}`
+      : "Offline";
+
 export const formatChat = (
   chat: Chat,
   currentUserId: string,
@@ -58,11 +68,7 @@ export const formatChat = (
   return {
     id: String(chat._id),
     title: otherUser?.name || "Unknown User",
-    subtitle: online
-      ? "Online"
-      : otherUser?.lastSeen
-        ? `Last seen ${formatListTime(otherUser.lastSeen)}`
-        : "Offline",
+    subtitle: formatPresenceSubtitle(online, otherUser?.lastSeen),
     avatar: otherUser?.profilePicture || "",
     isGroup: false,
     otherUserId: userIdOf(otherUser),

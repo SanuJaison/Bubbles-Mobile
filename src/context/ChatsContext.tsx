@@ -12,7 +12,7 @@ import { getMyChatsAPI } from "../api/chats";
 import { getErrorMessage } from "../api/client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Chat, Conversation } from "../types";
-import { formatChat, userIdOf, userNameOf } from "../utils/chat";
+import { formatChat, formatPresenceSubtitle, userIdOf, userNameOf } from "../utils/chat";
 import { notifyIncomingMessage } from "../lib/notifications";
 import { useAuth } from "./AuthContext";
 import { useChatPrefs } from "./ChatPrefsContext";
@@ -304,14 +304,50 @@ export const ChatsProvider = ({ children }: { children: ReactNode }) => {
       if (chatId) removeConversation(String(chatId));
     };
 
+    // Presence is broadcast by the server whenever someone connects or
+    // disconnects. Without this the chat list kept whatever `isOnline` /
+    // `lastSeen` the last fetch returned, so "Online" could stick forever.
+    const handleUserStatus = (payload: {
+      userId?: string;
+      isOnline?: boolean;
+      lastSeen?: string | null;
+    }) => {
+      const userId = payload?.userId ? String(payload.userId) : "";
+
+      if (!userId) return;
+
+      const isOnline = Boolean(payload.isOnline);
+      const lastSeen = payload.lastSeen || null;
+
+      setConversations((previous) =>
+        previous.map((conversation) => {
+          if (conversation.isGroup) return conversation;
+          if (conversation.otherUserId !== userId) return conversation;
+
+          return {
+            ...conversation,
+            online: isOnline,
+            subtitle: formatPresenceSubtitle(isOnline, lastSeen),
+            participants: conversation.participants.map((participant) =>
+              userIdOf(participant) === userId
+                ? { ...participant, isOnline, lastSeen }
+                : participant
+            ),
+          };
+        })
+      );
+    };
+
     socket.on("newMessage", handleNewMessage);
     socket.on("chatsChanged", handleChatsChanged);
     socket.on("chatRemoved", handleChatRemoved);
+    socket.on("userStatus", handleUserStatus);
 
     return () => {
       socket.off("newMessage", handleNewMessage);
       socket.off("chatsChanged", handleChatsChanged);
       socket.off("chatRemoved", handleChatRemoved);
+      socket.off("userStatus", handleUserStatus);
     };
   }, [
     socket,
