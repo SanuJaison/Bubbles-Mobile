@@ -3,7 +3,7 @@
     "name": "Bubbles",
     "slug": "bubbles",
     "scheme": "bubbles",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -14,7 +14,7 @@
     },
     "android": {
       "package": "com.bubbles.chat",
-      "versionCode": 8,
+      "versionCode": 9,
       "adaptiveIcon": {
         "backgroundColor": "#010107",
         "foregroundImage": "./assets/android-icon-foreground.png"

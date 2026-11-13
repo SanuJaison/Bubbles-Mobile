@@ -16,6 +16,7 @@ import { Screen } from "../components/Screen";
 import { APP_VERSION, DOWNLOAD_URL, PRIVACY_URL, TERMS_URL } from "../config";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { requestUpdateCheck } from "../lib/appUpdate";
 import { useTheme, type ThemeMode } from "../theme";
 import { openExternalUrl } from "../utils/links";
 
@@ -288,6 +289,13 @@ export default function ProfileScreen() {
               icon="desktop-outline"
               label="Download for Windows"
               onPress={() => openExternalUrl(DOWNLOAD_URL)}
+            />
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <Row
+              icon="cloud-download-outline"
+              label="Check for updates"
+              value={APP_VERSION}
+              onPress={requestUpdateCheck}
             />
           </View>
         </View>

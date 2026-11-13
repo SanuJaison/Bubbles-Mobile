@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AppState } from "react-native";
 import {
   checkForUpdate,
   currentVersion,
   downloadAndInstallUpdate,
+  onUpdateCheckRequested,
+  snoozeUpdate,
   type AvailableUpdate,
 } from "../lib/appUpdate";
 import { useToast } from "../context/ToastContext";
@@ -10,9 +13,10 @@ import { openExternalUrl } from "../utils/links";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 /**
- * Checks GitHub for a newer APK shortly after launch and offers a one-tap
- * install. Sideloaded builds cannot self-update, but Android's package
- * installer can replace the app in place when the signing key matches.
+ * Checks GitHub for a newer APK shortly after launch, again when the app comes
+ * back to the foreground, and on demand from Profile → Check for updates.
+ * Sideloaded builds cannot self-update, but Android's package installer can
+ * replace the app in place when the signing key matches.
  */
 export const UpdateGate = () => {
   const { showToast } = useToast();
@@ -20,24 +24,59 @@ export const UpdateGate = () => {
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  useEffect(() => {
-    let active = true;
+  // Mirrors `update` so the background checks can skip without re-subscribing.
+  const pending = useRef<AvailableUpdate | null>(null);
 
+  const applyUpdate = useCallback((next: AvailableUpdate | null) => {
+    pending.current = next;
+    setUpdate(next);
+  }, []);
+
+  const runCheck = useCallback(
+    async (force: boolean) => {
+      // A prompt is already on screen (or the installer is running).
+      if (!force && pending.current) return;
+
+      const found = await checkForUpdate(force).catch(() => null);
+
+      if (found) {
+        applyUpdate(found);
+        return;
+      }
+
+      if (force) {
+        showToast(
+          `You are on the latest version of Bubbles (${currentVersion()}).`,
+          "success"
+        );
+      }
+    },
+    [applyUpdate, showToast]
+  );
+
+  useEffect(() => {
     // Let the app settle first so the prompt does not fight with login or the
     // chat list loading.
     const timer = setTimeout(() => {
-      checkForUpdate()
-        .then((found) => {
-          if (active && found) setUpdate(found);
-        })
-        .catch(() => {});
+      void runCheck(false);
     }, 2500);
 
+    // Coming back from the background is the other moment the user expects a
+    // fresh answer, and it costs nothing thanks to the throttle.
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void runCheck(false);
+    });
+
+    const unsubscribe = onUpdateCheckRequested(() => {
+      void runCheck(true);
+    });
+
     return () => {
-      active = false;
       clearTimeout(timer);
+      subscription.remove();
+      unsubscribe();
     };
-  }, []);
+  }, [runCheck]);
 
   const handleInstall = async () => {
     if (!update) return;
@@ -47,14 +86,14 @@ export const UpdateGate = () => {
 
     try {
       await downloadAndInstallUpdate(update, setProgress);
-      setUpdate(null);
+      applyUpdate(null);
     } catch {
       showToast(
         "Could not start the installer. Opening the download page instead.",
         "error"
       );
       void openExternalUrl(update.url).catch(() => {});
-      setUpdate(null);
+      applyUpdate(null);
     } finally {
       setDownloading(false);
       setProgress(0);
@@ -77,7 +116,10 @@ export const UpdateGate = () => {
       loading={downloading}
       onConfirm={handleInstall}
       onCancel={() => {
-        if (!downloading) setUpdate(null);
+        if (downloading) return;
+
+        if (update) void snoozeUpdate(update.version);
+        applyUpdate(null);
       }}
     />
   );
