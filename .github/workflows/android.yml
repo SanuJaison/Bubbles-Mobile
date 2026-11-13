@@ -46,13 +46,13 @@ jobs:
           echo "Using $SDKMANAGER"
           yes | "$SDKMANAGER" --licenses > /dev/null || true
           "$SDKMANAGER" --install \
-            "platforms;android-37" \
+            "platforms;android-36" \
             "platform-tools" \
             "ndk;27.1.12297006" \
             "cmake;3.22.1"
 
           # Build-tools are auto-downloaded by AGP if this name is unavailable.
-          "$SDKMANAGER" --install "build-tools;37.0.0" || "$SDKMANAGER" --install "build-tools;36.0.0"
+          "$SDKMANAGER" --install "build-tools;36.0.0"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
