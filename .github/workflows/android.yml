@@ -46,13 +46,17 @@ jobs:
           echo "Using $SDKMANAGER"
           yes | "$SDKMANAGER" --licenses > /dev/null || true
           "$SDKMANAGER" --install \
-            "platforms;android-36" \
+            "platforms;android-37.0" \
+            "build-tools;37.0.0" \
             "platform-tools" \
             "ndk;27.1.12297006" \
             "cmake;3.22.1"
 
-          # Build-tools are auto-downloaded by AGP if this name is unavailable.
-          "$SDKMANAGER" --install "build-tools;36.0.0"
+          # Expo SDK 58 compiles against API 37, and the SDK ships that platform
+          # as "37.0". AGP looks for the directory "android-37".
+          if [ ! -d "$ANDROID_HOME/platforms/android-37" ]; then
+            ln -s "$ANDROID_HOME/platforms/android-37.0" "$ANDROID_HOME/platforms/android-37"
+          fi
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
